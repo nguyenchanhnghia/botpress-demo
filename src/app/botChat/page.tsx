@@ -200,26 +200,26 @@ export default function BotChatPage() {
         setLoading(true);
         setError(null);
         try {
-            const tempId = `temp-${Date.now()}`;
 
             setInput("");
             setBotTyping(true); // Show bot typing indicator
             const response = await botpressAPI.sendMessage(userKey, conversation.id, input);
-            setMessages(prev => {
-                // Remove the temp message only if a real user message comes back with a different id
-                const filtered = prev.filter(msg => msg.id !== tempId);
-                if (response.message && response.message.isBot !== true) {
-                    // Add the real user message if returned (rare, usually only bot replies)
-                    filtered.push({
-                        id: response.message.id,
-                        text: response.message.payload?.text || response.message.text || input,
-                        sender: 'user',
-                        createdAt: response.message.createdOn || response.message.createdAt,
-                        userId: response.message.isBot ? response.message.botId : response.message.userId
-                    });
-                }
-                return filtered;
-            });
+            // setMessages(prev => {
+            //     // Remove the temp message only if a real user message comes back with a different id
+            //     const filtered = prev.filter(msg => msg.id !== tempId);
+            //     if (response.message && response.message.isBot !== true) {
+            //         // Add the real user message if returned (rare, usually only bot replies)
+            //         filtered.push({
+            //             id: response.message.id,
+            //             text: response.message.payload?.text || response.message.text || input,
+            //             sender: 'user',
+            //             createdAt: response.message.createdOn || response.message.createdAt,
+            //             userId: response.message.isBot ? response.message.botId : response.message.userId
+            //         });
+            //     }
+            //     return filtered;
+            // });
+            console.log('response', response);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to send message');
             setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')));
