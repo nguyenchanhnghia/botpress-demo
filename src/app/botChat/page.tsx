@@ -237,6 +237,15 @@ export default function BotChatPage() {
         router.push("/login");
     };
 
+    // Helper to check if a string contains HTML tags
+    function containsHTML(str: string) {
+        return /<[^>]+>/.test(str);
+    }
+    // Basic sanitizer: remove <script> tags (for safety)
+    function sanitizeHTML(html: string) {
+        return html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
+    }
+
     if (initializing) {
         return (
             <ProtectedRoute>
@@ -305,7 +314,6 @@ export default function BotChatPage() {
                             </div>
                         )}
                         {messages.map((msg, index) => {
-                            // Determine alignment: user messages from current user align right, others left
                             const isCurrentUser = msg.sender === "user" && msg.userId === conversation?.userId;
                             return (
                                 <div
@@ -318,7 +326,11 @@ export default function BotChatPage() {
                                             : "bg-white/70 backdrop-blur-sm text-gray-800 border border-white/20"
                                             }`}
                                     >
-                                        <p className="text-sm">{msg.text}</p>
+                                        {containsHTML(msg.text) ? (
+                                            <div className="text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHTML(msg.text) }} />
+                                        ) : (
+                                            <p className="text-sm whitespace-pre-line">{msg.text}</p>
+                                        )}
                                         <p className={`text-xs mt-1 ${isCurrentUser ? "text-blue-100" : "text-gray-500"}`}>
                                             {new Date(msg.createdAt).toLocaleTimeString()}
                                         </p>
