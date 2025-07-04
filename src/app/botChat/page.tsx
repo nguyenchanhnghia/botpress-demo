@@ -11,6 +11,9 @@ interface Message {
     sender: 'user' | 'bot';
     createdAt: string;
     userId: string;
+    options?: any[]; // Added options to the interface
+    payload?: any;
+    type?: string;
 }
 
 interface Conversation {
@@ -30,6 +33,9 @@ export default function BotChatPage() {
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const [botTyping, setBotTyping] = useState(false);
     const [isAuth, setIsAuth] = useState(false);
+    const [pendingOptions, setPendingOptions] = useState<{ messageId: string; options: any[] | undefined } | null>(null);
+    const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const botTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Check authentication before initializing chat
     useEffect(() => {
@@ -109,7 +115,8 @@ export default function BotChatPage() {
                         text: msg.payload?.text || msg.text || 'Unknown message',
                         sender: msg.isBot ? 'bot' : 'user',
                         createdAt: msg.createdAt || msg.createdOn || msg.timestamp,
-                        userId: msg.isBot ? msg.botId : msg.userId
+                        userId: msg.isBot ? msg.botId : msg.userId,
+                        ...(msg.options ? { options: msg.options } : {})
                     }));
 
                 // Remove duplicates based on message ID
@@ -128,6 +135,7 @@ export default function BotChatPage() {
                     conversationData.id,
                     (data) => {
                         console.log('Received SSE message:', data);
+
                         // Only handle messages with id and text
                         if (data && data.id && data.payload?.text) {
                             const newMessage: Message = {
@@ -135,7 +143,9 @@ export default function BotChatPage() {
                                 text: data.payload?.text || 'Unknown message',
                                 sender: data.isBot ? 'bot' : 'user',
                                 createdAt: data.createdAt || new Date().toISOString(),
-                                userId: data.isBot ? data.botId : data.userId
+                                userId: data.isBot ? data.botId : data.userId,
+                                type: data.payload?.type,
+                                ...(data?.payload.options ? { options: data?.payload?.options } : {})
                             };
                             setMessages(prev => {
                                 // Remove any temp user message if bot is replying
@@ -146,7 +156,19 @@ export default function BotChatPage() {
                                 if (filtered.some(msg => msg.id === newMessage.id)) return filtered;
                                 return [...filtered, newMessage];
                             });
-                            if (data.isBot) setBotTyping(false); // Hide bot typing when bot replies
+                            if (data.isBot) {
+                                const isBotCheckingData = data.payload?.text?.toUpperCase()?.includes('LET ME CHECK');
+                                console.log('isBotCheckingData', isBotCheckingData);
+                                // Clear the timeout and hide bot typing when bot replies
+                                if (!isBotCheckingData) {
+                                    if (botTypingTimeoutRef.current) {
+                                        clearTimeout(botTypingTimeoutRef.current);
+                                        botTypingTimeoutRef.current = null;
+                                    }
+                                    setBotTyping(false);
+                                }
+
+                            }
                         }
                     }
                 );
@@ -177,6 +199,9 @@ export default function BotChatPage() {
             if (eventSourceRef.current) {
                 eventSourceRef.current.close();
             }
+            if (botTypingTimeoutRef.current) {
+                clearTimeout(botTypingTimeoutRef.current);
+            }
         };
     }, [isAuth]);
 
@@ -188,6 +213,50 @@ export default function BotChatPage() {
             }
         }
     }, [initializing, messages]);
+
+    // Handle bot typing timeout
+    useEffect(() => {
+        if (botTyping) {
+            // Clear any existing timeout
+            if (botTypingTimeoutRef.current) {
+                clearTimeout(botTypingTimeoutRef.current);
+            }
+
+            // Set a 5-second timeout
+            botTypingTimeoutRef.current = setTimeout(() => {
+                setBotTyping(false);
+            }, 5000);
+        } else {
+            // Clear timeout when bot typing is false
+            if (botTypingTimeoutRef.current) {
+                clearTimeout(botTypingTimeoutRef.current);
+                botTypingTimeoutRef.current = null;
+            }
+        }
+
+        // Cleanup on unmount
+        return () => {
+            if (botTypingTimeoutRef.current) {
+                clearTimeout(botTypingTimeoutRef.current);
+            }
+        };
+    }, [botTyping]);
+
+    // Update pendingOptions when a new bot message with options arrives
+    useEffect(() => {
+        // Find the latest bot message with options that hasn't been answered
+        const lastBotWithOptions = [...messages].reverse().find(
+            m => m.sender === 'bot' && m.options && Array.isArray(m.options) && m.options.length > 0
+        );
+        if (lastBotWithOptions && (!pendingOptions || pendingOptions.messageId !== lastBotWithOptions.id)) {
+            setPendingOptions({ messageId: lastBotWithOptions.id, options: lastBotWithOptions.options });
+            setSelectedOption(null);
+        }
+        if (!lastBotWithOptions) {
+            setPendingOptions(null);
+            setSelectedOption(null);
+        }
+    }, [messages]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -315,6 +384,10 @@ export default function BotChatPage() {
                         )}
                         {messages.map((msg, index) => {
                             const isCurrentUser = msg.sender === "user" && msg.userId === conversation?.userId;
+                            const isChoiceType = msg?.options && msg?.type === 'choice';
+                            const showOptions = msg?.options && Array.isArray(msg?.options) && msg?.options.length > 0;
+
+                            console.log('msg', { isChoiceType, showOptions, msg });
                             return (
                                 <div
                                     key={`${msg.id}-${index}`}
@@ -326,7 +399,71 @@ export default function BotChatPage() {
                                             : "bg-white/70 backdrop-blur-sm text-gray-800 border border-white/20"
                                             }`}
                                     >
-                                        {containsHTML(msg.text) ? (
+                                        {/* Choice type: text + outline buttons below */}
+                                        {isChoiceType && showOptions ? (
+                                            <>
+                                                {containsHTML(msg.text) ? (
+                                                    <div className="text-sm mb-2" dangerouslySetInnerHTML={{ __html: sanitizeHTML(msg.text) }} />
+                                                ) : (
+                                                    <span className="text-sm mb-2 whitespace-pre-line block">{msg.text}</span>
+                                                )}
+                                                <div className="flex items-center space-x-2 mt-2">
+                                                    {(msg?.options ?? []).map((opt: any, i: number) => (
+                                                        <button
+                                                            key={opt.value || i}
+                                                            type="button"
+                                                            className="px-6 py-1 bg-gradient-to-r from-blue-400 to-purple-400 text-white rounded-md hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            onClick={async () => {
+                                                                setSelectedOption(opt.value);
+                                                                setPendingOptions(null);
+                                                                setInput("");
+                                                                setBotTyping(true);
+                                                                const userKey = auth.getUserKey();
+                                                                if (!userKey || !conversation) return;
+                                                                await botpressAPI.sendMessage(userKey, conversation.id, opt.value);
+                                                            }}
+                                                            disabled={!!selectedOption}
+                                                        >
+                                                            {opt.label || opt.value}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        ) : showOptions ? (
+                                            // Default: radio group below message
+                                            <>
+                                                {containsHTML(msg.text) ? (
+                                                    <div className="text-sm mb-2" dangerouslySetInnerHTML={{ __html: sanitizeHTML(msg.text) }} />
+                                                ) : (
+                                                    <span className="text-sm mb-2 whitespace-pre-line block">{msg.text}</span>
+                                                )}
+                                                <form className="mt-2 space-y-2" onSubmit={e => e.preventDefault()}>
+                                                    {(msg?.options ?? []).map((opt: any, i: number) => (
+                                                        <label key={opt.value || i} className="flex items-center space-x-2 cursor-pointer">
+                                                            <input
+                                                                type="radio"
+                                                                name={`options-${msg.id}`}
+                                                                value={opt.value}
+                                                                checked={selectedOption === opt.value}
+                                                                disabled={!!selectedOption}
+                                                                onChange={async () => {
+                                                                    setSelectedOption(opt.value);
+                                                                    setPendingOptions(null);
+                                                                    setInput("");
+                                                                    setBotTyping(true);
+                                                                    // Send the selected option as a message
+                                                                    const userKey = auth.getUserKey();
+                                                                    if (!userKey || !conversation) return;
+                                                                    await botpressAPI.sendMessage(userKey, conversation.id, opt.value);
+                                                                }}
+                                                                className="form-radio text-blue-600 focus:ring-blue-500"
+                                                            />
+                                                            <span>{opt.label || opt.value}</span>
+                                                        </label>
+                                                    ))}
+                                                </form>
+                                            </>
+                                        ) : containsHTML(msg.text) ? (
                                             <div className="text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHTML(msg.text) }} />
                                         ) : (
                                             <p className="text-sm whitespace-pre-line">{msg.text}</p>
