@@ -103,9 +103,7 @@ export default function BotChatPage() {
                 });
 
                 // Step 3: List existing messages (show both user and bot)
-                console.log('Loading messages...');
                 const messagesResponse = await botpressAPI.listMessages(userKey, conversationData.id);
-                console.log('Messages response:', messagesResponse);
 
                 if (!isMounted) return;
 
@@ -157,8 +155,8 @@ export default function BotChatPage() {
                                 return [...filtered, newMessage];
                             });
                             if (data.isBot) {
-                                const isBotCheckingData = data.payload?.text?.toUpperCase()?.includes('LET ME CHECK');
-                                console.log('isBotCheckingData', isBotCheckingData);
+                                const upperText = data.payload?.text?.toUpperCase() || '';
+                                const isBotCheckingData = upperText.includes('LET ME CHECK') || upperText.includes('LET ME PROVIDE');
                                 // Clear the timeout and hide bot typing when bot replies
                                 if (!isBotCheckingData) {
                                     if (botTypingTimeoutRef.current) {
@@ -330,8 +328,6 @@ export default function BotChatPage() {
         );
     }
 
-    // Debug log before render
-    console.log('messages to render:', messages);
 
     return (
         <ProtectedRoute>

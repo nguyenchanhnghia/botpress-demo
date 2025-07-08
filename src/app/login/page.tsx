@@ -39,6 +39,7 @@ export default function LoginPage() {
                 <div className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob-move" style={{ backgroundColor: '#ffd234', animationDelay: '0s' }}></div>
                 <div className="absolute top-1/3 right-1/4 w-72 h-72 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob-move" style={{ backgroundColor: '#ffd234', animationDelay: '2s' }}></div>
                 <div className="absolute -bottom-8 left-1/3 w-72 h-72 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob-move" style={{ backgroundColor: '#ed1823', animationDelay: '4s' }}></div>
+
             </div>
 
             <div className="relative w-full max-w-md p-8 space-y-6 bg-white/70 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20">
@@ -57,6 +58,7 @@ export default function LoginPage() {
                     <div className="space-y-2">
                         <label htmlFor="username" className="block text-sm font-semibold text-gray-700">Username</label>
                         <input
+                            disabled={isLoading}
                             id="username"
                             name="username"
                             type="text"
@@ -71,6 +73,7 @@ export default function LoginPage() {
                     <div className="space-y-2">
                         <label htmlFor="password" className="block text-sm font-semibold text-gray-700">Password</label>
                         <input
+                            disabled={isLoading}
                             id="password"
                             name="password"
                             type="password"
@@ -104,6 +107,7 @@ export default function LoginPage() {
                     <p className="text-xs text-gray-600">Password: <span className="font-mono bg-gray-200/50 px-1 rounded">password</span></p>
                 </div>
             </div>
+
         </div>
     );
 } 

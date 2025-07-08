@@ -32,11 +32,11 @@ body {
   }
 
   33% {
-    transform: translate(30px, -50px) scale(1.1);
+    transform: translate(30px, -150px) scale(1.1);
   }
 
   66% {
-    transform: translate(-20px, 20px) scale(0.9);
+    transform: translate(-20px, 50px) scale(0.9);
   }
 
   100% {
@@ -64,15 +64,15 @@ body {
   }
 
   20% {
-    transform: translate(-20px, 10px) scale(1.1);
+    transform: translate(-50px, 10px) scale(1.1);
   }
 
   40% {
-    transform: translate(30px, -20px) scale(0.95);
+    transform: translate(80px, -20px) scale(0.95);
   }
 
   60% {
-    transform: translate(-15px, 20px) scale(1.05);
+    transform: translate(-35px, 20px) scale(1.05);
   }
 
   80% {
@@ -82,4 +82,232 @@ body {
 
 .animate-blob-move {
   animation: blob-move 8s ease-in-out infinite;
+}
+
+.dot-strong {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin: 0 6px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #6366f1 0%, #a21caf 100%);
+  opacity: 0.7;
+  animation: dot-strong-bounce 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.dot-strong-delay1 {
+  animation-delay: 0.2s;
+}
+
+.dot-strong-delay2 {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-strong-bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+
+  40% {
+    transform: scale(1.4);
+    opacity: 1;
+  }
+}
+
+.dot-move-container {
+  display: flex;
+  align-items: center;
+  width: 80px;
+  /* The width can be adjusted for the travel distance */
+  animation: dot-move-horizontal 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes dot-move-horizontal {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(260px);
+  }
+}
+
+.dot-wander-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dot-wander-move 8s ease-in-out infinite;
+}
+
+.dot-wander {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin: 0 8px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #6366f1 0%, #a21caf 100%);
+  opacity: 0.8;
+  animation: dot-wander-bounce 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  position: absolute;
+}
+
+.dot-wander-delay1 {
+  animation-delay: 0.3s;
+}
+
+.dot-wander-delay2 {
+  animation-delay: 0.6s;
+}
+
+@keyframes dot-wander-move {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  25% {
+    transform: translate(200px, -100px) rotate(90deg);
+  }
+
+  50% {
+    transform: translate(400px, 0px) rotate(180deg);
+  }
+
+  75% {
+    transform: translate(200px, 100px) rotate(270deg);
+  }
+
+  100% {
+    transform: translate(0, 0) rotate(360deg);
+  }
+}
+
+@keyframes dot-wander-bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+
+  40% {
+    transform: scale(1.6);
+    opacity: 1;
+  }
+}
+
+.blur-dot {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.blur-dot-1 {
+  width: 320px;
+  height: 320px;
+  background: #6366f1;
+  /* blue */
+  top: 10%;
+  left: 10%;
+  animation: blur-dot-move-1 12s ease-in-out infinite alternate;
+}
+
+.blur-dot-2 {
+  width: 260px;
+  height: 260px;
+  background: #ffd234;
+  /* yellow */
+  top: 60%;
+  left: 60%;
+  animation: blur-dot-move-2 14s ease-in-out infinite alternate;
+  animation-delay: 2s;
+}
+
+.blur-dot-3 {
+  width: 280px;
+  height: 280px;
+  background: #ed1823;
+  /* red */
+  top: 40%;
+  left: 70%;
+  animation: blur-dot-move-3 16s ease-in-out infinite alternate;
+  animation-delay: 4s;
+}
+
+@keyframes blur-dot-move-1 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  25% {
+    transform: translate(80px, -60px) scale(1.1);
+  }
+
+  50% {
+    transform: translate(120px, 80px) scale(0.95);
+  }
+
+  75% {
+    transform: translate(-60px, 100px) scale(1.05);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes blur-dot-move-2 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  20% {
+    transform: translate(-100px, 40px) scale(1.08);
+  }
+
+  40% {
+    transform: translate(60px, 120px) scale(0.92);
+  }
+
+  60% {
+    transform: translate(-80px, -60px) scale(1.12);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes blur-dot-move-3 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  30% {
+    transform: translate(100px, -80px) scale(1.13);
+  }
+
+  60% {
+    transform: translate(-120px, 60px) scale(0.9);
+  }
+
+  90% {
+    transform: translate(80px, 100px) scale(1.07);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
 }
