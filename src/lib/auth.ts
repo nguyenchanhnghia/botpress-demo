@@ -13,6 +13,7 @@ export interface User {
     id: string;
     username: string;
     email?: string;
+    role: string;
 }
 
 const AUTH_COOKIE_NAME = 'auth_token';
@@ -88,24 +89,67 @@ export const auth = {
     }
 };
 
-// Mock authentication function (replace with real API call)
+// Updated authentication function that calls the MongoDB API
 export const authenticateUser = async (username: string, password: string): Promise<{ user: User; token: string } | null> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Mock authentication logic (replace with real API)
-    if (username === 'admin' && password === 'password') {
-        return {
-            user: {
-                id: '1',
-                username: 'admin',
-                email: 'admin@example.com'
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
             },
-            token: 'mock-jwt-token-' + Date.now()
-        };
-    }
+            body: JSON.stringify({ username, password }),
+        });
 
-    return null;
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Login failed');
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Store user info in client-side state (not the accessToken)
+            auth.login(data.user, 'authenticated');
+            return {
+                user: data.user,
+                token: 'authenticated' // We don't store the actual accessToken on client
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Authentication error:', error);
+        throw error;
+    }
+};
+
+// Add a function to check authentication status from server
+export const checkAuthStatus = async (): Promise<User | null> => {
+    try {
+        const response = await fetch('/api/protected');
+        if (response.ok) {
+            const data = await response.json();
+            return data.user;
+        }
+        return null;
+    } catch (error) {
+        console.error('Auth status check error:', error);
+        return null;
+    }
+};
+
+// Add a function to logout via API
+export const logoutUser = async (): Promise<void> => {
+    try {
+        await fetch('/api/auth/logout', {
+            method: 'POST',
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+    } finally {
+        // Always clear client-side state
+        auth.logout();
+    }
 };
 
 // Botpress API functions

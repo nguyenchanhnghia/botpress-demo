@@ -9,7 +9,7 @@ export default function Home() {
 
   useEffect(() => {
     if (auth.isAuthenticated()) {
-      router.push('/botChat');
+      router.push('/admin-cms');
     } else {
       router.push('/login');
     }
