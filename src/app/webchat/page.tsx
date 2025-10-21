@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const CLIENT_ID = 'c31ddfb5-6955-4541-98d9-8d0d8dd40e2b';
+const CLIENT_ID = '629e90eb-4b6f-4767-977a-686a81eeb449';
 
 export default function WebchatDemo() {
     const [userId, setUserId] = useState<string | null>(null);
@@ -19,6 +19,7 @@ export default function WebchatDemo() {
         setError(null);
         // Backend will create user on first message send, so just simulate
         setUserId(CLIENT_ID);
+        console.log('[webchat] Created user, userId=', CLIENT_ID);
         setStep("user");
         setLoading(false);
     };
@@ -28,6 +29,7 @@ export default function WebchatDemo() {
         setLoading(true);
         setError(null);
         // Backend will create conversation on first message send, so just simulate
+        console.log('[webchat] Creating conversation for userId=', userId || CLIENT_ID);
         setStep("conversation");
         setLoading(false);
     };
@@ -50,7 +52,9 @@ export default function WebchatDemo() {
                 }),
             });
             const data = await res.json();
+            console.log('[webchat] /api/botpress response:', data);
             if (data.conversationId && !conversationId) setConversationId(data.conversationId);
+            if (data.conversationId) console.log('[webchat] Set conversationId=', data.conversationId);
             if (data.response) setMessages((prev) => [...prev, { sender: "bot", text: data.response }]);
             setMessage("");
             setStep("chat");

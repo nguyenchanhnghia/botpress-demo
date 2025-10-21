@@ -1,16 +1,24 @@
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/auth";
 
 export default function Home() {
   const router = useRouter();
+  const [authStatus, setAuthStatus] = useState<string>('Checking...');
 
   useEffect(() => {
-    if (auth.isAuthenticated()) {
-      router.push('/admin-cms');
+    const isAuth = auth.isAuthenticated();
+    console.log('🔍 Home page: Authentication status:', isAuth);
+
+    if (isAuth) {
+      setAuthStatus('✅ Authenticated - Redirecting to dashboard');
+      console.log('🔄 Home page: Redirecting to dashboard');
+      router.push('/dashboard');
     } else {
+      setAuthStatus('❌ Not authenticated - Redirecting to login');
+      console.log('🔄 Home page: Redirecting to login');
       router.push('/login');
     }
   }, [router]);
@@ -30,6 +38,13 @@ export default function Home() {
         </div>
         <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Redirecting...</h2>
         <p className="text-gray-600 mt-2">Please wait while we redirect you</p>
+
+        {/* Debug information */}
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-sm text-blue-800">
+            🔍 DEBUG: {authStatus}
+          </p>
+        </div>
       </div>
     </div>
   );

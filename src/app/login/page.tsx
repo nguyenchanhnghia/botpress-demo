@@ -1,32 +1,127 @@
 'use client';
 
-import React from "react";
-import { LoginForm } from '@/components/auth/LoginForm';
-import { UserProvider } from '@/components/auth/UserContext';
+export const dynamic = 'force-dynamic';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { auth } from '@/lib/auth';
+import { ldapAuth } from '@/lib/ldap-auth';
 
 export default function LoginPage() {
+    const router = useRouter();
+    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        // Check if user is already authenticated
+        if (auth.isAuthenticated()) {
+            router.push('/dashboard');
+            return;
+        }
+
+        // Check for error parameters from window.location.search (client-side only)
+        let errorParam: string | null = null;
+        try {
+            const params = new URLSearchParams(window.location.search);
+            errorParam = params.get('error');
+        } catch {
+            errorParam = null;
+        }
+        if (errorParam) {
+            switch (errorParam) {
+                case 'oauth_error':
+                    setError('OAuth authentication failed');
+                    break;
+                case 'no_code':
+                    setError('No authorization code received');
+                    break;
+                case 'auth_failed':
+                    setError('Authentication failed');
+                    break;
+                case 'token_exchange_failed':
+                    setError('Token exchange failed');
+                    break;
+                case 'callback_error':
+                    setError('Callback error occurred');
+                    break;
+                case 'token_expired':
+                    setError('Your session has expired. Please log in again.');
+                    break;
+                case 'no_token':
+                    setError('No authentication token found. Please log in.');
+                    break;
+                case 'invalid_token':
+                    setError('Invalid authentication token. Please log in again.');
+                    break;
+                default:
+                    setError('An unknown error occurred');
+            }
+        }
+    }, [router]);
+
+    const handleLogin = async () => {
+        setIsLoading(true);
+        try {
+            // Use centralized LDAP auth helper to get the authorization URL (handles PKCE)
+            const url = await ldapAuth.getAuthorizationUrl();
+            // In case the helper returned a relative or absolute URL, redirect the browser
+            window.location.href = url;
+        } catch (error) {
+            console.error('Login error:', error);
+            setError('Failed to initiate login');
+            setIsLoading(false);
+        }
+    };
+
     return (
-        <UserProvider>
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 relative overflow-hidden">
-                {/* Background blur elements */}
-                <div className="absolute inset-0">
-                    <div className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob-move" style={{ backgroundColor: '#ffd234', animationDelay: '0s' }}></div>
-                    <div className="absolute top-1/3 right-1/4 w-72 h-72 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob-move" style={{ backgroundColor: '#ffd234', animationDelay: '2s' }}></div>
-                    <div className="absolute -bottom-8 left-1/3 w-72 h-72 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob-move" style={{ backgroundColor: '#ed1823', animationDelay: '4s' }}></div>
-                </div>
-                <div className="relative w-full max-w-md p-8 space-y-6 bg-white/70 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20">
-                    <div className="text-center">
-                        <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Welcome Back</h2>
-                        <p className="text-gray-600 mt-2">Sign in to your account</p>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-md w-full space-y-8">
+                <div>
+                    <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                        Sign in to VZ Wiki
+                    </h2>
+                    <p className="mt-2 text-center text-sm text-gray-600">
+                        Use your LDAP credentials to access the system
+                    </p>
+                    {/* Debug text for not logged in users */}
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <p className="text-sm text-yellow-800 text-center">
+                            🔍 DEBUG: User not logged in - Authentication required
+                        </p>
                     </div>
-                    <LoginForm />
-                    <div className="text-center p-4 bg-gray-50/50 backdrop-blur-sm rounded-xl border border-gray-200/30">
-                        <p className="text-sm font-medium text-gray-700 mb-2">Demo credentials:</p>
-                        <p className="text-xs text-gray-600">Username: <span className="font-mono bg-gray-200/50 px-1 rounded">admin</span></p>
-                        <p className="text-xs text-gray-600">Password: <span className="font-mono bg-gray-200/50 px-1 rounded">password</span></p>
+                </div>
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+                        {error}
+                    </div>
+                )}
+
+                <div className="mt-8 space-y-6">
+                    <div>
+                        <button
+                            onClick={handleLogin}
+                            disabled={isLoading}
+                            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isLoading ? (
+                                <div className="flex items-center">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                    Redirecting...
+                                </div>
+                            ) : (
+                                'Sign in with LDAP'
+                            )}
+                        </button>
+                    </div>
+
+                    <div className="text-center">
+                        <p className="text-sm text-gray-600">
+                            You will be redirected to the LDAP authentication server
+                        </p>
                     </div>
                 </div>
             </div>
-        </UserProvider>
+        </div>
     );
-} 
+}

@@ -300,8 +300,12 @@ export default function BotChatPage() {
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
         }
-        auth.logout();
-        router.push("/login");
+        // Call server logout to clear httpOnly cookies
+        fetch('/api/auth/logout', { method: 'POST' }).finally(() => {
+            // Clear client-side cookies and redirect
+            auth.logout();
+            router.push('/login');
+        });
     };
 
     // Helper to check if a string contains HTML tags

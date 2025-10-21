@@ -6,20 +6,14 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "init-db": "node scripts/init-db.js",
-    "migrate-roles": "node scripts/migrate-roles.mjs",
-    "migrate-user-roles": "node scripts/migrate-user-roles.mjs"
+    "lint": "next lint"
   },
   "dependencies": {
     "@botpress/chat": "^0.5.1",
     "@botpress/webchat": "^3.0.0",
     "@types/js-cookie": "^3.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "bcryptjs": "^3.0.2",
+    "jose": "^5.10.0",
     "js-cookie": "^3.0.5",
-    "jsonwebtoken": "^9.0.2",
-    "mongodb": "^6.17.0",
     "next": "15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
