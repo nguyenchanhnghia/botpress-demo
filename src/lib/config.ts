@@ -17,10 +17,10 @@ export const config: {
   // LDAP Auth Service Configuration
   ldapAuthUrl: process.env.NEXT_PUBLIC_LDAP_AUTH_URL || 'https://zu4airs4fpwj2t2pxln6uweupa0qsryn.lambda-url.ap-southeast-1.on.aws',
   clientId: process.env.NEXT_PUBLIC_CLIENT_ID || 'vz-wiki-frontend',
-  redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3001/api/auth/callback',
+  redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || 'https://botpress-demo-3nc9-git-main-nghiancs-projects.vercel.app/api/auth/callback',
 
   // App Configuration
-  appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001',
+  appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://botpress-demo-3nc9-git-main-nghiancs-projects.vercel.app/',
 
   // Cookie Configuration
   cookieConfig: {
