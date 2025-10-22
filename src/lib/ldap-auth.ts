@@ -447,6 +447,9 @@ export const botpressAPI = {
 
   // Listen for new messages (SSE)
   listenMessages: async (userKey: string, conversationId: string, onMessage: (data: any) => void) => {
+    // Use AbortController to allow cancelling the underlying fetch and socket
+    const controller = new AbortController();
+
     // Create a custom EventSource with headers using fetch and ReadableStream
     const response = await fetch(`${BOTPRESS_BASE_URL}/conversations/${conversationId}/listen`, {
       method: 'GET',
@@ -454,7 +457,8 @@ export const botpressAPI = {
         'Accept': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'x-user-key': userKey
-      }
+      },
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -468,10 +472,12 @@ export const botpressAPI = {
       throw new Error('Failed to get response reader');
     }
 
+    let closed = false;
+
     const processStream = async () => {
       try {
         while (true) {
-          const { done, value } = await reader.read();
+          const { done, value } = await reader!.read();
           if (done) break;
 
           const chunk = decoder.decode(value);
@@ -483,13 +489,12 @@ export const botpressAPI = {
 
               // Handle ping messages
               if (dataString === 'ping') {
-                console.log('Received ping');
+                // keep-alive ping
                 continue;
               }
 
               try {
                 const data = JSON.parse(dataString);
-                console.log('Received SSE data:', data);
 
                 // Handle message_created events
                 if (data.type === 'message_created' && data.data) {
@@ -498,24 +503,48 @@ export const botpressAPI = {
                   // Pass through other event types
                   onMessage(data);
                 }
-              } catch (error) {
-                console.error('Error parsing SSE message:', error);
+              } catch {
+                // ignore JSON parse errors for partial chunks
               }
             }
           }
         }
       } catch (error) {
-        console.error('SSE stream error:', error);
+        if ((error as any)?.name === 'AbortError') {
+          // Expected when controller.abort() is called
+        } else {
+          console.error('SSE stream error:', error);
+        }
+      } finally {
+        // Ensure reader is cancelled and mark closed
+        try {
+          if (reader) {
+            await reader.cancel();
+          }
+        } catch {
+          // ignore
+        }
+        closed = true;
       }
     };
 
-    // Start processing the stream
+    // Start processing the stream (don't await)
     processStream();
 
-    // Return a mock EventSource-like object for compatibility
+    // Return EventSource-like object for compatibility
     return {
       close: () => {
-        reader.cancel();
+        if (closed) return;
+        try {
+          controller.abort();
+        } catch {
+          // ignore
+        }
+        try {
+          if (reader) reader.cancel();
+        } catch {
+          // ignore
+        }
       },
       onmessage: null,
       onerror: null

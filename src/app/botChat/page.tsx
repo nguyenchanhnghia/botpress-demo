@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from 'next/image';
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useRouter } from "next/navigation";
 import { auth, botpressAPI } from "@/lib/auth";
@@ -141,6 +142,16 @@ export default function BotChatPage() {
 
                 // Step 4: Start listening for new messages
                 console.log('Starting message listener...');
+                // Close any previous event source to avoid leaking listeners
+                if (eventSourceRef.current) {
+                    try {
+                        eventSourceRef.current.close();
+                    } catch {
+                        // ignore
+                    }
+                    eventSourceRef.current = null;
+                }
+
                 const eventSource = await botpressAPI.listenMessages(
                     userKey,
                     conversationData.id,
@@ -377,12 +388,17 @@ export default function BotChatPage() {
                 <div className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-white/20 p-4">
                     <div className="max-w-4xl mx-auto flex justify-between items-center">
                         <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-bold text-lg">🤖</span>
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
+                                <Image
+                                    src="https://chatbotcdn.socialenable.co/vietjet-air/assets/images/amy-full-body.png"
+                                    alt="Amy"
+                                    width={40}
+                                    height={40}
+                                    className="object-cover"
+                                />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Botpress Chat</h1>
-                                <p className="text-sm text-gray-600">Direct API Integration</p>
+                                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">TVJ Internal Assistant</h1>
                             </div>
                         </div>
                         <div className="flex items-center space-x-4">
