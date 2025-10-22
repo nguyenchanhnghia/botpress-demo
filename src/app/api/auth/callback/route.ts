@@ -19,6 +19,17 @@ export async function GET(req: NextRequest) {
     }
 
     try {
+      // Debug: log incoming cookies to verify pkce and other cookies are present
+      try {
+        const incoming: Record<string, string> = {};
+        for (const [k, v] of req.cookies) {
+          incoming[k] = v.value;
+        }
+        console.log('Callback: incoming cookies =', incoming);
+      } catch (logErr) {
+        console.log('Callback: failed to log incoming cookies', logErr);
+      }
+
       // Read PKCE code_verifier from incoming cookies (set earlier by ldapAuth.getAuthorizationUrl)
       const codeVerifier = req.cookies.get('pkce_code_verifier')?.value;
 
@@ -28,7 +39,10 @@ export async function GET(req: NextRequest) {
         // On server-side success: set HTTP-only cookies for token and user data
         const res = NextResponse.redirect(new URL('/botChat', req.url));
 
-        // Set auth token as httpOnly cookie (SameSite=lax so it's set on redirect)
+  // Debug: note we're about to set cookies
+  console.log('Callback: setting cookies auth_token, user_data, x-user-key');
+
+  // Set auth token as httpOnly cookie (SameSite=lax so it's set on redirect)
         res.cookies.set('auth_token', result.token, {
           httpOnly: true,
           path: '/',
@@ -54,6 +68,8 @@ export async function GET(req: NextRequest) {
           secure: config.cookieConfig.secure,
           maxAge: 60 * 60 * 24 * config.cookieConfig.expires
         });
+
+        console.log('Callback: cookies set on response');
 
         // Remove PKCE cookie
         res.cookies.delete({ name: 'pkce_code_verifier', path: '/' });

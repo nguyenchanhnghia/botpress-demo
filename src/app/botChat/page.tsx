@@ -31,6 +31,7 @@ export default function BotChatPage() {
     const [error, setError] = useState<string | null>(null);
     const eventSourceRef = useRef<{ close: () => void } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
+    const messagesContainerRef = useRef<HTMLDivElement | null>(null);
     const [botTyping, setBotTyping] = useState(false);
     const [isAuth, setIsAuth] = useState(false);
     const [pendingOptions, setPendingOptions] = useState<{ messageId: string; options: any[] | undefined } | null>(null);
@@ -123,6 +124,18 @@ export default function BotChatPage() {
                 );
                 // Sort messages by createdAt ascending (oldest first)
                 uniqueMessages.sort((a: Message, b: Message) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+                // If there are no messages, inject a friendly welcome message from the bot
+                if (uniqueMessages.length === 0) {
+                    uniqueMessages.push({
+                        id: 'welcome-1',
+                        text: "Aloha, my colleague! I’m your VietJet Thailand Employee Support AI Agent! 🤡 How can I sprinkle some assistance your way today? ✨",
+                        sender: 'bot',
+                        createdAt: new Date().toISOString(),
+                        userId: conversationData?.botId || 'bot'
+                    });
+                }
+
                 setMessages(uniqueMessages);
 
 
@@ -203,11 +216,28 @@ export default function BotChatPage() {
         };
     }, [isAuth]);
 
-    // Scroll to bottom after initial message load and on new messages
+    // Scroll to bottom after initial message load and on new messages,
+    // but only if the content actually overflows the container or the end element is out of view.
     useEffect(() => {
-        if (!initializing && messages.length > 0) {
-            if (messagesEndRef.current) {
-                messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        if (!initializing && messages.length > 0 && messagesEndRef.current && messagesContainerRef.current) {
+            const container = messagesContainerRef.current;
+            const endEl = messagesEndRef.current;
+
+            try {
+                const containerRect = container.getBoundingClientRect();
+                const endRect = endEl.getBoundingClientRect();
+
+                // If the container is scrollable (content taller than container) OR
+                // the end element is below the visible bottom of the container, perform a smooth scroll.
+                const isOverflowing = container.scrollHeight > container.clientHeight + 8; // small threshold
+                const endOutOfView = endRect.bottom > containerRect.bottom - 8;
+
+                if (isOverflowing || endOutOfView) {
+                    endEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }
+            } catch {
+                // Fallback to always scrolling if measurements fail for any reason
+                messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
             }
         }
     }, [initializing, messages]);
@@ -254,7 +284,7 @@ export default function BotChatPage() {
             setPendingOptions(null);
             setSelectedOption(null);
         }
-    }, [messages]);
+    }, [messages, pendingOptions]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -372,7 +402,7 @@ export default function BotChatPage() {
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 p-4 overflow-y-auto relative">
+                <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto relative">
                     <div className="max-w-4xl mx-auto space-y-4">
                         {messages.length === 0 && (
                             <div className="text-center py-12">
