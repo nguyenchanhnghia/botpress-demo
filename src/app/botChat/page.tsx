@@ -128,9 +128,22 @@ export default function BotChatPage() {
 
                 // If there are no messages, inject a friendly welcome message from the bot
                 if (uniqueMessages.length === 0) {
+                    // Include current user's name or prettified email local-part in the welcome message when available
+                    const currentUser = auth.getCurrentUser();
+                    let nameOrEmail = 'colleague';
+                    if (currentUser) {
+                        if (currentUser.displayName) {
+                            nameOrEmail = currentUser.displayName;
+                        } else if (currentUser.email) {
+                            const local = currentUser.email.split('@')[0] || currentUser.email;
+                            // Replace dots/underscores with spaces and title-case the parts
+                            nameOrEmail = local.replace(/[._]+/g, ' ').split(' ').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+                        }
+                    }
+
                     uniqueMessages.push({
                         id: 'welcome-1',
-                        text: "Aloha, my colleague! I’m your VietJet Thailand Employee Support AI Agent! 🤡 How can I sprinkle some assistance your way today? ✨",
+                        text: `Aloha, ${nameOrEmail}! I’m your VietJet Thailand Employee Support AI Agent! 🤡 How can I sprinkle some assistance your way today? ✨`,
                         sender: 'bot',
                         createdAt: new Date().toISOString(),
                         userId: conversationData?.botId || 'bot'
