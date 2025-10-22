@@ -78,17 +78,11 @@ export default function LoginPage() {
             <div className="max-w-md w-full space-y-8">
                 <div>
                     <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                        Sign in to VZ Wiki
+                        Sign in to TVJ Internal AI Assistant
                     </h2>
                     <p className="mt-2 text-center text-sm text-gray-600">
                         Use your LDAP credentials to access the system
                     </p>
-                    {/* Debug text for not logged in users */}
-                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                        <p className="text-sm text-yellow-800 text-center">
-                            🔍 DEBUG: User not logged in - Authentication required
-                        </p>
-                    </div>
                 </div>
 
                 {error && (
@@ -110,7 +104,7 @@ export default function LoginPage() {
                                     Redirecting...
                                 </div>
                             ) : (
-                                'Sign in with LDAP'
+                                'Sign in with VietJet Email'
                             )}
                         </button>
                     </div>
