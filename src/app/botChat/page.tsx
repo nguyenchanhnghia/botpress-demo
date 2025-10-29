@@ -39,6 +39,8 @@ export default function BotChatPage() {
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
     const botTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    let isMounted = true;
+
     // Check authentication before initializing chat
     useEffect(() => {
         if (!auth.isAuthenticated()) {
@@ -48,184 +50,202 @@ export default function BotChatPage() {
         }
     }, [router]);
 
-    // Initialize Botpress user and conversation
-    useEffect(() => {
-        if (!isAuth) return;
-        let isMounted = true;
+    const initializeChat = async (isClearCache?: boolean) => {
+        try {
+            setInitializing(true);
+            setError(null);
 
-        const initializeChat = async () => {
-            try {
-                setInitializing(true);
-                setError(null);
+            if (isClearCache) {
+                auth.clearConversation();
+            }
 
-                const userKey = auth.getUserKey();
-                if (!userKey) {
-                    throw new Error('User key not found. Please login again.');
+            const userKey = auth.getUserKey();
+            if (!userKey) {
+                throw new Error('User key not found. Please login again.');
+            }
+
+            // Step 1: Get or create user
+            console.log('Getting or creating user...');
+            const userResponse = await botpressAPI.getOrCreateUser(userKey);
+            console.log('User response:', userResponse);
+
+            // Step 2: Try to use cached conversation first, then create new one if needed
+            let conversationData: any = null;
+            const cachedConversation = auth.getCachedConversation();
+
+            if (cachedConversation) {
+                console.log('Found cached conversation, validating...');
+                try {
+                    await botpressAPI.validateConversation(userKey, cachedConversation.id);
+                    console.log('Cached conversation is valid, using it');
+                    conversationData = cachedConversation;
+                } catch {
+                    console.log('Cached conversation is invalid, creating new one');
+                    auth.clearConversation();
                 }
+            }
 
-                // Step 1: Get or create user
-                console.log('Getting or creating user...');
-                const userResponse = await botpressAPI.getOrCreateUser(userKey);
-                console.log('User response:', userResponse);
+            if (!conversationData) {
+                console.log('Creating new conversation...');
+                const conversationResponse = await botpressAPI.getOrCreateConversation(userKey);
+                console.log('Conversation response:', conversationResponse);
+                conversationData = conversationResponse.conversation || conversationResponse;
 
-                // Step 2: Try to use cached conversation first, then create new one if needed
-                let conversationData: any = null;
-                const cachedConversation = auth.getCachedConversation();
-
-                if (cachedConversation) {
-                    console.log('Found cached conversation, validating...');
-                    try {
-                        await botpressAPI.validateConversation(userKey, cachedConversation.id);
-                        console.log('Cached conversation is valid, using it');
-                        conversationData = cachedConversation;
-                    } catch {
-                        console.log('Cached conversation is invalid, creating new one');
-                        auth.clearConversation();
-                    }
-                }
-
-                if (!conversationData) {
-                    console.log('Creating new conversation...');
-                    const conversationResponse = await botpressAPI.getOrCreateConversation(userKey);
-                    console.log('Conversation response:', conversationResponse);
-                    conversationData = conversationResponse.conversation || conversationResponse;
-
-                    // Cache the new conversation
-                    auth.saveConversation({
-                        id: conversationData.id,
-                        userId: conversationData.userId || userResponse.user?.id
-                    });
-                }
-
-                if (!isMounted) return;
-
-                setConversation({
+                // Cache the new conversation
+                auth.saveConversation({
                     id: conversationData.id,
                     userId: conversationData.userId || userResponse.user?.id
                 });
-
-                // Step 3: List existing messages (show both user and bot)
-                const messagesResponse = await botpressAPI.listMessages(userKey, conversationData.id);
-
-                if (!isMounted) return;
-
-                const formattedMessages = (messagesResponse.messages || messagesResponse)
-                    .map((msg: any) => ({
-                        id: msg.id,
-                        text: msg.payload?.text || msg.text || 'Unknown message',
-                        sender: msg.isBot ? 'bot' : 'user',
-                        createdAt: msg.createdAt || msg.createdOn || msg.timestamp,
-                        userId: msg.isBot ? msg.botId : msg.userId,
-                        ...(msg.options ? { options: msg.options } : {})
-                    }));
-
-                // Remove duplicates based on message ID
-                const uniqueMessages = formattedMessages.filter((msg: Message, index: number, self: Message[]) =>
-                    index === self.findIndex((m: Message) => m.id === msg.id)
-                );
-                // Sort messages by createdAt ascending (oldest first)
-                uniqueMessages.sort((a: Message, b: Message) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-                // If there are no messages, inject a friendly welcome message from the bot
-                if (uniqueMessages.length === 0) {
-                    // Include current user's name or prettified email local-part in the welcome message when available
-                    const currentUser = auth.getCurrentUser();
-                    let nameOrEmail = 'colleague';
-                    if (currentUser) {
-                        if (currentUser.displayName) {
-                            nameOrEmail = currentUser.displayName;
-                        } else if (currentUser.email) {
-                            const local = currentUser.email.split('@')[0] || currentUser.email;
-                            // Replace dots/underscores with spaces and title-case the parts
-                            nameOrEmail = local.replace(/[._]+/g, ' ').split(' ').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
-                        }
-                    }
-
-                    uniqueMessages.push({
-                        id: 'welcome-1',
-                        text: `Aloha, ${nameOrEmail}! I’m your VietJet Thailand Employee Support AI Agent! 🤡 How can I sprinkle some assistance your way today? ✨`,
-                        sender: 'bot',
-                        createdAt: new Date().toISOString(),
-                        userId: conversationData?.botId || 'bot'
-                    });
-                }
-
-                setMessages(uniqueMessages);
-
-
-                // Step 4: Start listening for new messages
-                console.log('Starting message listener...');
-                // Close any previous event source to avoid leaking listeners
-                if (eventSourceRef.current) {
-                    try {
-                        eventSourceRef.current.close();
-                    } catch {
-                        // ignore
-                    }
-                    eventSourceRef.current = null;
-                }
-
-                const eventSource = await botpressAPI.listenMessages(
-                    userKey,
-                    conversationData.id,
-                    (data) => {
-                        console.log('Received SSE message:', data);
-
-                        // Only handle messages with id and text
-                        if (data && data.id && data.payload?.text) {
-                            const newMessage: Message = {
-                                id: data.id,
-                                text: data.payload?.text || 'Unknown message',
-                                sender: data.isBot ? 'bot' : 'user',
-                                createdAt: data.createdAt || new Date().toISOString(),
-                                userId: data.isBot ? data.botId : data.userId,
-                                type: data.payload?.type,
-                                ...(data?.payload.options ? { options: data?.payload?.options } : {})
-                            };
-                            setMessages(prev => {
-                                // Remove any temp user message if bot is replying
-                                let filtered = prev;
-                                if (newMessage.sender === 'bot') {
-                                    filtered = prev.filter(msg => !msg.id.startsWith('temp-'));
-                                }
-                                if (filtered.some(msg => msg.id === newMessage.id)) return filtered;
-                                return [...filtered, newMessage];
-                            });
-                            if (data.isBot) {
-                                const upperText = data.payload?.text?.toUpperCase() || '';
-                                const isBotCheckingData = upperText.includes('LET ME CHECK') || upperText.includes('LET ME PROVIDE');
-                                // Clear the timeout and hide bot typing when bot replies
-                                if (!isBotCheckingData) {
-                                    if (botTypingTimeoutRef.current) {
-                                        clearTimeout(botTypingTimeoutRef.current);
-                                        botTypingTimeoutRef.current = null;
-                                    }
-                                    setBotTyping(false);
-                                }
-
-                            }
-                        }
-                    }
-                );
-
-                if (!isMounted) {
-                    eventSource.close();
-                    return;
-                }
-
-                eventSourceRef.current = eventSource;
-
-            } catch (err) {
-                console.error('Initialization error:', err);
-                if (isMounted) {
-                    setError(err instanceof Error ? err.message : 'Failed to initialize chat');
-                }
-            } finally {
-                if (isMounted) {
-                    setInitializing(false);
-                }
             }
-        };
+
+            if (!isMounted) return;
+
+            setConversation({
+                id: conversationData.id,
+                userId: conversationData.userId || userResponse.user?.id
+            });
+
+            // Step 3: List existing messages (show both user and bot)
+            const messagesResponse = await botpressAPI.listMessages(userKey, conversationData.id);
+
+            if (!isMounted) return;
+
+            const formattedMessages = (messagesResponse.messages || messagesResponse)
+                .map((msg: any) => ({
+                    id: msg.id,
+                    text: msg.payload?.text || msg.text || 'Unknown message',
+                    sender: msg.isBot ? 'bot' : 'user',
+                    createdAt: msg.createdAt || msg.createdOn || msg.timestamp,
+                    userId: msg.isBot ? msg.botId : msg.userId,
+                    ...(msg.options ? { options: msg.options } : {})
+                }));
+
+            // Remove duplicates based on message ID
+            const uniqueMessages = formattedMessages.filter((msg: Message, index: number, self: Message[]) =>
+                index === self.findIndex((m: Message) => m.id === msg.id)
+            );
+            // Sort messages by createdAt ascending (oldest first)
+            uniqueMessages.sort((a: Message, b: Message) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+            // If there are no messages, inject a friendly welcome message from the bot
+            if (uniqueMessages.length === 0) {
+                setBotTyping(true);
+                // Include current user's name or prettified email local-part in the welcome message when available
+                const currentUser = auth.getCurrentUser();
+                let nameOrEmail = 'colleague';
+                if (currentUser) {
+                    if (currentUser.displayName) {
+                        nameOrEmail = currentUser.displayName;
+                    } else if (currentUser.email) {
+                        const local = currentUser.email.split('@')[0] || currentUser.email;
+                        // Replace dots/underscores with spaces and title-case the parts
+                        nameOrEmail = local.replace(/[._]+/g, ' ').split(' ').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+                    }
+                }
+
+                // uniqueMessages.push({
+                //     id: 'welcome-1',
+                //     text: `Aloha, ${nameOrEmail}! I’m your VietJet Thailand Employee Support AI Agent! 🤡 How can I sprinkle some assistance your way today? ✨`,
+                //     sender: 'bot',
+                //     createdAt: new Date().toISOString(),
+                //     userId: conversationData?.botId || 'bot'
+                // });
+                // const welcomeTexts = JSON.stringify({
+                //     msg: `Aloha, ${nameOrEmail}! I’m your VietJet Thailand Employee Support AI Agent! 🤡 How can I sprinkle some assistance your way today? ✨`,
+                //     type: 'start_conversation'
+                // });
+
+                const welcomeTexts = JSON.stringify({
+                    msg: `My name is ${nameOrEmail}`,
+                    type: 'start_conversation'
+                });
+
+                if (!!conversationData?.id) {
+                    botpressAPI.sendMessage(userKey, conversationData.id, welcomeTexts);
+                }
+
+            }
+
+            setMessages(uniqueMessages);
+
+
+            // Step 4: Start listening for new messages
+            console.log('Starting message listener...');
+            // Close any previous event source to avoid leaking listeners
+            if (eventSourceRef.current) {
+                try {
+                    eventSourceRef.current.close();
+                } catch {
+                    // ignore
+                }
+                eventSourceRef.current = null;
+            }
+
+            const eventSource = await botpressAPI.listenMessages(
+                userKey,
+                conversationData.id,
+                (data) => {
+                    console.log('Received SSE message:', data);
+
+                    // Only handle messages with id and text
+                    if (data && data.id && data.payload?.text) {
+                        const newMessage: Message = {
+                            id: data.id,
+                            text: data.payload?.text || 'Unknown message',
+                            sender: data.isBot ? 'bot' : 'user',
+                            createdAt: data.createdAt || new Date().toISOString(),
+                            userId: data.isBot ? data.botId : data.userId,
+                            type: data.payload?.type,
+                            ...(data?.payload.options ? { options: data?.payload?.options } : {})
+                        };
+                        setMessages(prev => {
+                            // Remove any temp user message if bot is replying
+                            let filtered = prev;
+                            if (newMessage.sender === 'bot') {
+                                filtered = prev.filter(msg => !msg.id.startsWith('temp-'));
+                            }
+                            if (filtered.some(msg => msg.id === newMessage.id)) return filtered;
+                            return [...filtered, newMessage];
+                        });
+                        if (data.isBot) {
+                            const upperText = data.payload?.text?.toUpperCase() || '';
+                            const isBotCheckingData = upperText.includes('LET ME CHECK') || upperText.includes('LET ME PROVIDE');
+                            // Clear the timeout and hide bot typing when bot replies
+                            if (!isBotCheckingData) {
+                                if (botTypingTimeoutRef.current) {
+                                    clearTimeout(botTypingTimeoutRef.current);
+                                    botTypingTimeoutRef.current = null;
+                                }
+                                setBotTyping(false);
+                            }
+
+                        }
+                    }
+                }
+            );
+
+            if (!isMounted) {
+                eventSource.close();
+                return;
+            }
+
+            eventSourceRef.current = eventSource;
+
+        } catch (err) {
+            console.error('Initialization error:', err);
+            if (isMounted) {
+                setError(err instanceof Error ? err.message : 'Failed to initialize chat');
+            }
+        } finally {
+            if (isMounted) {
+                setInitializing(false);
+            }
+        }
+    };
+
+    // Initialize Botpress user and conversation
+    useEffect(() => {
+        if (!isAuth) return;
 
         initializeChat();
 
@@ -415,11 +435,12 @@ export default function BotChatPage() {
                             </div>
                         </div>
                         <div className="flex items-center space-x-4">
-                            {conversation && (
-                                <div className="text-xs text-gray-500 bg-white/50 px-2 py-1 rounded">
-                                    Conv: {conversation.id.slice(0, 8)}...
-                                </div>
-                            )}
+                            <button
+                                onClick={() => initializeChat(true)}
+                                className="px-3 py-1 text-xs bg-yellow-300 text-black rounded-md hover:brightness-95"
+                            >
+                                New Conv
+                            </button>
                             <button
                                 onClick={handleLogout}
                                 className="px-4 py-2 text-sm bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl hover:from-red-600 hover:to-pink-600 transition-all duration-200 transform hover:scale-105 font-semibold shadow-lg"
@@ -447,6 +468,26 @@ export default function BotChatPage() {
                             const showOptions = msg?.options && Array.isArray(msg?.options) && msg?.options.length > 0;
 
                             console.log('msg', { isChoiceType, showOptions, msg });
+
+                            // try to parse msg.text as JSON only when it looks like JSON to avoid throwing
+                            let parsedMsg: any = null;
+                            if (typeof msg.text === 'string') {
+                                const t = msg.text.trim();
+                                const looksLikeJson = (t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'));
+                                if (looksLikeJson) {
+                                    try {
+                                        parsedMsg = JSON.parse(t);
+                                    } catch {
+                                        parsedMsg = null;
+                                    }
+                                }
+                            }
+
+                            // add conditional that parsedMsg is an object and has type 'start_conversation'
+                            if (parsedMsg && typeof parsedMsg === 'object' && parsedMsg?.type === 'start_conversation') {
+                                return null;
+                            }
+
                             return (
                                 <div
                                     key={`${msg.id}-${index}`}
@@ -466,12 +507,12 @@ export default function BotChatPage() {
                                                 ) : (
                                                     <span className="text-sm mb-2 whitespace-pre-line block">{msg.text}</span>
                                                 )}
-                                                <div className="flex items-center space-x-2 mt-2">
+                                                <div className="flex flex-wrap items-center gap-2 mt-2">
                                                     {(msg?.options ?? []).map((opt: any, i: number) => (
                                                         <button
                                                             key={opt.value || i}
                                                             type="button"
-                                                            className="px-6 py-1 bg-gradient-to-r from-blue-400 to-purple-400 text-white rounded-md hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            className="px-4 py-1 bg-gradient-to-r from-blue-400 to-purple-400 text-white rounded-md hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                                                             onClick={async () => {
                                                                 setSelectedOption(opt.value);
                                                                 setPendingOptions(null);

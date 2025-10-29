@@ -338,6 +338,29 @@ async function retryWithBackoff<T>(
 }
 
 export const botpressAPI = {
+  // Send the custom event
+  sendCustomEvent: async (userKey: string, conversationId: string, eventPayload: any) => {
+    return retryWithBackoff(async () => {
+      const response = await fetch(`${BOTPRESS_BASE_URL}/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-key': userKey
+        },
+        body: JSON.stringify({
+          payload: eventPayload,
+          conversationId: conversationId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send custom event');
+      }
+
+      return response.json();
+    });
+  },
+
   // Get or create user
   getOrCreateUser: async (userKey: string) => {
     return retryWithBackoff(async () => {
