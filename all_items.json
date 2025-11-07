@@ -1,0 +1,45 @@
+{
+    "Items": [
+        {
+            "client_id": {
+                "S": "vz-wiki-frontend"
+            },
+            "is_active": {
+                "BOOL": true
+            },
+            "redirect_uris": {
+                "L": [
+                    {
+                        "S": "http://localhost:3001/api/auth/callback"
+                    },
+                    {
+                        "S": "https://botpress-demo-3nc9-git-main-nghiancs-projects.vercel.app/api/auth/callback"
+                    },
+                    {
+                        "S": "https://hvdvam5w6j63ocrndkv5y2x5qy0bptxy.lambda-url.ap-southeast-1.on.aws/api/auth/callback"
+                    },
+                    {
+                        "S": "https://wiki.vietjetthai.com/api/auth/callback"
+                    }
+                ]
+            }
+        },
+        {
+            "client_id": {
+                "S": "v1_botpress-app"
+            },
+            "redirect_uris": {
+                "L": [
+                    {
+                        "S": "http://localhost:4000/callback"
+                    }
+                ]
+            },
+            "is_active": {
+                "BOOL": true
+            }
+        }
+    ],
+    "Count": 2,
+    "ScannedCount": 2
+}

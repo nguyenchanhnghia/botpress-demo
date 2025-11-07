@@ -1,89 +1,205 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ldapAuth } from '@/lib/ldap-auth';
 import { config } from '@/lib/config';
+import Users from '@/lib/aws/users';
+
+/**
+ * OAuth callback handler (server API route)
+ *
+ * Purpose:
+ * - Process the authorization code returned by the identity provider (OIDC / LDAP provider).
+ * - Exchange the code for tokens using ldapAuth.exchangeCodeForToken (server-side PKCE verifier is read
+ *   from a cookie `pkce_code_verifier`).
+ * - Verify the ID token and build a minimal user object from verified claims.
+ * - Persist or lookup the user in DynamoDB (via `Users` helper). If not found in DB, call Botpress
+ *   `/users/get-or-create` first to obtain the canonical Botpress user key, then create the DB record
+ *   using that key. If Botpress is unavailable or the request fails, fall back to a default static key.
+ * - Set cookies for the client:
+ *     - `auth_token` (HttpOnly) : the ID token for server-side checks (short-lived)
+ *     - `user_data` (readable) : JSON representation of the user for client-side UI
+ *     - `x-user-key` (readable) : Botpress user key used by client-side Botpress calls
+ * - Redirect the browser to `/botChat` after successful handling.
+ *
+ * Important env variables used:
+ * - BOTPRESS_API_USER_KEY (preferred) | BOTPRESS_SERVICE_KEY | BOTPRESS_TOKEN : service key used for calling
+ *   Botpress `/users/get-or-create` on the server.
+ * - USERS_TABLE, USERS_TABLE_PK, etc. are used by the Users helper to persist records.
+ *
+ * Notes:
+ * - This is a server-side Next.js route (runs in Node). All console logs appear in the server terminal.
+ * - The handler is defensive: when Dynamo is unavailable (expired AWS creds) it falls back to calling
+ *   Botpress or using a default key so the login flow is not blocked.
+ */
+const BOTPRESS_BASE_URL = process.env.BOTPRESS_BASE_URL || 'https://chat.botpress.cloud/6e333992-4bc2-452f-9089-990386321bf5';
+
+function getOrigin(req: NextRequest) {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  return `${proto}://${host}`;
+}
 
 export async function GET(req: NextRequest) {
   try {
+    // Parse redirect URL and extract OIDC parameters: authorization code and optional error
     const { searchParams } = new URL(req.url);
     const code = searchParams.get('code');
     const error = searchParams.get('error');
 
     if (error) {
-      console.error('OAuth error:', error);
-      return NextResponse.redirect(new URL('/login?error=oauth_error', req.url));
+      return NextResponse.redirect(new URL('/login?error=oauth_error', getOrigin(req)));
     }
 
     if (!code) {
-      console.error('No authorization code received');
-      return NextResponse.redirect(new URL('/login?error=no_code', req.url));
+      return NextResponse.redirect(new URL('/login?error=no_code', getOrigin(req)));
     }
+
+    // PKCE: read the code_verifier stored in a short-lived cookie during the initial authorization request
+    // This allows the server-side callback to complete the PKCE exchange (sessionStorage is not available on server)
+    const codeVerifier = req.cookies.get('pkce_code_verifier')?.value;
 
     try {
-      // Debug: log incoming cookies to verify pkce and other cookies are present
-      try {
-        const incoming: Record<string, string> = {};
-        for (const [k, v] of req.cookies) {
-          incoming[k] = v.value;
-        }
-        console.log('Callback: incoming cookies =', incoming);
-      } catch (logErr) {
-        console.log('Callback: failed to log incoming cookies', logErr);
-      }
-
-      // Read PKCE code_verifier from incoming cookies (set earlier by ldapAuth.getAuthorizationUrl)
-      const codeVerifier = req.cookies.get('pkce_code_verifier')?.value;
-
+      // Exchange the authorization code for tokens using ldapAuth helper. We pass the server-side
+      // PKCE verifier when available so the token endpoint can validate the PKCE flow.
       const result = await ldapAuth.exchangeCodeForToken(code, codeVerifier || undefined);
 
-      if (result) {
-        // On server-side success: set HTTP-only cookies for token and user data
-        const res = NextResponse.redirect(new URL('/botChat', req.url));
+      if (result?.user) console.log('[api/callback] user claims:', {
+        sub: result.user.sub,
+        email: result.user.email,
+        displayName: result.user.displayName,
+        department: result.user.department,
+        title: result.user.title
+      });
 
-  // Debug: note we're about to set cookies
-  console.log('Callback: setting cookies auth_token, user_data, x-user-key');
-
-  // Set auth token as httpOnly cookie (SameSite=lax so it's set on redirect)
-        res.cookies.set('auth_token', result.token, {
-          httpOnly: true,
-          path: '/',
-          sameSite: 'lax',
-          secure: config.cookieConfig.secure,
-          maxAge: 60 * 60 * 24 * config.cookieConfig.expires
-        });
-
-        // Set user data as non-httpOnly cookie so client can read it
-        res.cookies.set('user_data', JSON.stringify(result.user), {
-          httpOnly: false,
-          path: '/',
-          sameSite: 'lax',
-          secure: config.cookieConfig.secure,
-          maxAge: 60 * 60 * 24 * config.cookieConfig.expires
-        });
-
-        // Set the x-user-key cookie for Botpress (same static example used in ldap-auth login)
-        res.cookies.set('x-user-key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljMWI1ODViLWIxOWUtNGMwNy1iYTQ4LWNiZjUzYjJjYjZlOCIsImlhdCI6MTc2MTA0NDc0OH0.3tVt0zkrYH5SAuAxEdynXPprq38TRfUSngm2pTBjucw', {
-          httpOnly: false,
-          path: '/',
-          sameSite: 'lax',
-          secure: config.cookieConfig.secure,
-          maxAge: 60 * 60 * 24 * config.cookieConfig.expires
-        });
-
-        console.log('Callback: cookies set on response');
-
-        // Remove PKCE cookie
-        res.cookies.delete({ name: 'pkce_code_verifier', path: '/' });
-
-        return res;
-      } else {
-        return NextResponse.redirect(new URL('/login?error=auth_failed', req.url));
+      if (!result) {
+        return NextResponse.redirect(new URL('/login?error=auth_failed', getOrigin(req)));
       }
-    } catch (error) {
-      console.error('Token exchange error:', error);
-      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', req.url));
+
+      const res = NextResponse.redirect(new URL('/botChat', getOrigin(req)));
+
+
+      res.cookies.set('auth_token', result.token, {
+        httpOnly: true,
+        path: '/',
+        sameSite: 'lax',
+        secure: config.cookieConfig.secure,
+        maxAge: 60 * 60 * 24 * config.cookieConfig.expires,
+      });
+
+      // Resolve Botpress user key then persist user to DynamoDB.
+      // Flow:
+      // 1. Try to find existing user in Dynamo by email.
+      // 2. If not found, call Botpress `/users/get-or-create` using a server-side API key
+      //    (BOTPRESS_API_USER_KEY preferred). Use the returned Botpress key as the user's key.
+      // 3. Persist the user record with the Botpress key so future logins can find it locally.
+      let dbUser: any = null;
+      let xUserKey: string | undefined = undefined;
+
+      try {
+        // If the ID token includes an email, try the (fast) GSI query to locate the user in DynamoDB
+        if (result.user?.email) {
+          dbUser = await Users.findByEmail(result.user.email);
+        }
+
+        if (dbUser) {
+          xUserKey = dbUser.key || dbUser.userKey || dbUser.botpressKey;
+        } else {
+          const serviceKey = process.env.BOTPRESS_API_USER_KEY;
+          if (serviceKey) {
+            // Call Botpress server API to create or fetch a user. The Botpress endpoint expects
+            // an 'x-user-key' header and a body with name/pictureUrl/profile fields.
+            const bpResp = await fetch(`${BOTPRESS_BASE_URL}/users/get-or-create`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-user-key': serviceKey
+              },
+              body: JSON.stringify({
+                name: result.user?.displayName || result.user?.email,
+                pictureUrl: '',
+                profile: JSON.stringify({ sub: result.user?.sub, email: result.user?.email, title: result.user?.title, department: result.user?.department })
+              })
+            });
+
+
+            if (!!bpResp?.ok) {
+              const bpData = await bpResp.json();
+              const remoteKey = bpData?.key || process.env.BOTPRESS_API_USER_KEY;
+              // Persist the user into DynamoDB using the Botpress-provided key (or configured fallback).
+              const created = await Users.create({
+                user_id: bpData.user?.id || result.user?.email,
+                email: result.user?.email,
+                displayName: result.user?.displayName,
+                sub: result.user?.sub,
+                key: remoteKey || process.env.BOTPRESS_API_USER_KEY,
+                botpressResponse: bpData,
+                createdAt: new Date().toISOString()
+              });
+              dbUser = created;
+              xUserKey = remoteKey || process.env.BOTPRESS_API_USER_KEY;
+            } else {
+              const txt = await bpResp.text().catch(() => '');
+              // Botpress returned an HTTP error; save the response body for debugging and
+              // persist a DB entry using the configured fallback key so login can continue.
+              const created = await Users.create({
+                email: result.user?.email,
+                displayName: result.user?.displayName,
+                sub: result.user?.sub,
+                key: process.env.BOTPRESS_API_USER_KEY,
+                botpressError: `status:${bpResp.status} body:${txt}`,
+                createdAt: new Date().toISOString()
+              });
+              dbUser = created;
+              xUserKey = process.env.BOTPRESS_API_USER_KEY;
+            }
+          } else {
+            // No service key configured: create a local DB user using the configured fallback key
+            const created = await Users.create({
+              user_id: result.user?.email,
+              email: result.user?.email,
+              displayName: result.user?.displayName,
+              sub: result.user?.sub,
+              key: process.env.BOTPRESS_API_USER_KEY,
+              createdAt: new Date().toISOString()
+            });
+            dbUser = created;
+            xUserKey = process.env.BOTPRESS_API_USER_KEY;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[api/callback] user lookup/create error', dbErr);
+      }
+
+      // Set a readable `user_data` cookie for client-side UI and convenience. This cookie is
+      // intentionally not HttpOnly so frontend code can read user displayName/email for UI.
+      const userDataForCookie = { ...(result.user || {}), key: xUserKey };
+      res.cookies.set('user_data', JSON.stringify(userDataForCookie), {
+        httpOnly: false,
+        path: '/',
+        sameSite: 'lax',
+        secure: config.cookieConfig.secure,
+        maxAge: 60 * 60 * 24 * config.cookieConfig.expires,
+      });
+
+      // Set the `x-user-key` cookie (readable) so client-side Botpress calls include the correct key.
+      const finalUserKey = xUserKey || dbUser?.key || process.env.BOTPRESS_API_USER_KEY;
+      res.cookies.set('x-user-key', finalUserKey, {
+        httpOnly: false,
+        path: '/',
+        sameSite: 'lax',
+        secure: config.cookieConfig.secure,
+        maxAge: 60 * 60 * 24 * config.cookieConfig.expires,
+      });
+
+      // Clean up the short-lived PKCE cookie since it is no longer needed
+      res.cookies.delete('pkce_code_verifier');
+
+      return res;
+    } catch (err) {
+      console.error('Token exchange error:', err);
+      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', getOrigin(req)));
     }
-  } catch (error) {
-    console.error('Callback error:', error);
-    return NextResponse.redirect(new URL('/login?error=callback_error', req.url));
+  } catch (err) {
+    console.error('Callback error:', err);
+    return NextResponse.redirect(new URL('/login?error=callback_error', getOrigin(req)));
   }
 }

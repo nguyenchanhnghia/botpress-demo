@@ -79,7 +79,7 @@ export default function LoginPage() {
                 <div className="bg-white shadow-lg rounded-2xl p-8">
                     <div className="text-center">
                         <h2 className="text-3xl font-extrabold text-gray-900">Sign in to TVJ Internal AI Assistant</h2>
-                        <p className="mt-2 text-sm text-gray-600">Use your LDAP credentials to access the system</p>
+                        <p className="mt-2 text-sm text-gray-600">Use your Vietjet email to access the system</p>
                     </div>
 
                     {error && (
@@ -104,7 +104,6 @@ export default function LoginPage() {
                             )}
                         </button>
 
-                        <p className="mt-4 text-center text-sm text-gray-600">You will be redirected to the LDAP authentication server</p>
                     </div>
                 </div>
             </div>
