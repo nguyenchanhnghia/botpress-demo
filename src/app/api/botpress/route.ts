@@ -4,8 +4,6 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        console.log('Botpress webhook received:', body);
-
         // Handle different types of webhook events
         switch (body.type) {
             case 'message':

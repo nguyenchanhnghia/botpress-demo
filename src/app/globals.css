@@ -12,12 +12,6 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
 
 body {
   background: var(--background);
@@ -309,5 +303,167 @@ body {
 
   100% {
     transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes floatPulse {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(40px, -160px) scale(1.1);
+  }
+
+  66% {
+    transform: translate(-50px, 20px) scale(0.9);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+.animate-floatPulse {
+  animation: floatPulse 3s ease-in-out infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+
+
+/* ===== Animated infinite left→right border ===== */
+.border-anim {
+  background: linear-gradient(90deg, #d62323, #ffcc00, #d62323);
+  background-size: 300% 100%;
+  animation: moveBorder 5s linear infinite;
+}
+
+@keyframes moveBorder {
+  0% {
+    background-position: 0% 0%;
+  }
+
+  100% {
+    background-position: 100% 0%;
+  }
+}
+
+/* Optional: soft blob animation (unchanged) */
+@keyframes floatPulse {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(40px, -40px) scale(1.05);
+  }
+
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+.animate-floatPulse {
+  animation: floatPulse 10s ease-in-out infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@theme {
+
+  --animate-rotate-border: border-rotate 3s linear infinite;
+
+  @keyframes border-rotate {
+    to {
+      --border-angle: 360deg;
+    }
+  }
+}
+
+@keyframes placeholder-glow {
+  0% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.4;
+  }
+}
+
+.animate-placeholder-glow::placeholder {
+  animation: placeholder-glow 2s ease-in-out infinite;
+}
+
+.placeholder-cursor::after {
+  content: "|";
+  animation: blink 3s infinite;
+  margin-left: 2px;
+  color: #666;
+}
+
+@keyframes blink {
+
+  0%,
+  50%,
+  100% {
+    opacity: 1;
+  }
+
+  25%,
+  75% {
+    opacity: 0;
+  }
+}
+
+/* Blinking caret for tagline */
+.tagline-caret {
+  display: inline-block;
+  margin-left: 2px;
+  /* monospace feel */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 1em;
+  line-height: 1;
+  /* blink typing style */
+  animation: caret-blink 0.8s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
   }
 }

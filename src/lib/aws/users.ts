@@ -17,8 +17,8 @@ import { getItem, putItem, queryItems, deleteItem } from './dynamo';
  * }
  */
 
-const USERS_TABLE = process.env.USERS_TABLE || 'Users';
-const USERS_EMAIL_INDEX = process.env.USERS_EMAIL_INDEX || process.env.USERS_EMAIL_GSI || 'email-index';
+const USERS_TABLE = process.env.USERS_TABLE || 'vz-users-botpress';
+const USERS_EMAIL_INDEX = process.env.USERS_EMAIL_INDEX || process.env.USERS_EMAIL_GSI || 'gsi_email';
 // Primary key attribute name in the DynamoDB table. Some tables use 'id', others 'user_id' etc.
 const USERS_TABLE_PK = process.env.USERS_TABLE_PK || process.env.USERS_TABLE_PK_NAME || 'id';
 

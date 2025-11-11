@@ -18,11 +18,8 @@ export async function GET(req: NextRequest) {
     const state = searchParams.get('state') || undefined;
 
     if (!code) {
-      console.error('[callback] missing code in request');
       return NextResponse.json({ error: 'missing_code' }, { status: 400 });
     }
-
-    console.log('[callback] received code=%s state=%s', code, state);
 
     // PKCE code_verifier and state/nonce could be stored in cookies; read if present
     const codeVerifier = req.cookies.get('pkce_code_verifier')?.value;
@@ -38,9 +35,6 @@ export async function GET(req: NextRequest) {
       codeVerifier
     });
 
-    console.log('[callback] tokens received: has_id_token=%s has_access_token=%s expires_in=%s',
-      !!tokens.id_token, !!tokens.access_token, tokens.expires_in);
-
     if (!tokens.id_token) {
       console.error('[callback] missing id_token after exchange', tokens?.raw || null);
       return NextResponse.json({ error: 'missing_id_token', tokens: tokens.raw }, { status: 502 });
@@ -48,7 +42,6 @@ export async function GET(req: NextRequest) {
 
     // Verify the ID token via issuer JWKS
     const verification = await verifyIdToken(tokens.id_token, OIDC_ISSUER, OIDC_CLIENT_ID, expectedNonce);
-    console.log('[callback] id_token verified; subject=%s issuer=%s', verification.claims.sub, verification.claims.iss);
 
     // Get the user info from the dynamoDB if empty create the new user and create new user in the botpress system
 
@@ -87,9 +80,7 @@ export async function GET(req: NextRequest) {
 
     try {
       if (user.email) {
-        console.log('[callback] looking up user by email=%s', user.email);
         dbUser = await Users.findByEmail(user.email);
-        console.log('[callback] DB lookup result:', !!dbUser);
       }
 
       if (dbUser) {
@@ -102,9 +93,7 @@ export async function GET(req: NextRequest) {
 
         try {
           const serviceKey = process.env.BOTPRESS_SERVICE_KEY || process.env.BOTPRESS_TOKEN;
-          console.log('[callback] using botpress service key: %s', !!serviceKey);
           if (serviceKey) {
-            console.log('[callback] calling Botpress /users/get-or-create for user:', user.email || user.sub);
             const bpResp = await fetch(`${BOTPRESS_BASE_URL}/users/get-or-create`, {
               method: 'POST',
               headers: {
@@ -120,7 +109,6 @@ export async function GET(req: NextRequest) {
 
             if (bpResp.ok) {
               const bpData = await bpResp.json();
-              console.log('[callback] botpress ok, response keys:', Object.keys(bpData || {}));
               remoteKey = bpData?.key || bpData?.userKey || bpData?.xUserKey || bpData?.token || bpData?.id;
               // create DB entry with botpress response
               const created = await Users.create({
@@ -131,13 +119,11 @@ export async function GET(req: NextRequest) {
                 botpressResponse: bpData,
                 createdAt: new Date().toISOString()
               });
-              console.log('[callback] created DB user id=%s key=%s', created.id || created.key || '<unknown>', created.key || remoteKey);
               dbUser = created;
               xUserKey = remoteKey || DEFAULT_BOTPRESS_KEY;
             } else {
               // Botpress returned error — still create a DB record with default key and store error body
               const txt = await bpResp.text().catch(() => '');
-              console.warn('[callback] botpress returned error status=%s body=%s', bpResp.status, txt);
               const created = await Users.create({
                 email: user.email,
                 displayName: user.displayName,
@@ -146,7 +132,6 @@ export async function GET(req: NextRequest) {
                 botpressError: `status:${bpResp.status} body:${txt}`,
                 createdAt: new Date().toISOString()
               });
-              console.log('[callback] created DB user with default key id=%s', created.id || '<unknown>');
               dbUser = created;
               xUserKey = DEFAULT_BOTPRESS_KEY;
             }
@@ -163,7 +148,6 @@ export async function GET(req: NextRequest) {
             xUserKey = DEFAULT_BOTPRESS_KEY;
           }
         } catch (bpErr) {
-          console.warn('[callback] Botpress create user failed:', bpErr);
           // On error, create DB record with default key and record error
           try {
             const created = await Users.create({
@@ -174,7 +158,6 @@ export async function GET(req: NextRequest) {
               botpressError: (bpErr as Error).message,
               createdAt: new Date().toISOString()
             });
-            console.log('[callback] created DB user after botpress error id=%s', created.id || '<unknown>');
             dbUser = created;
             xUserKey = DEFAULT_BOTPRESS_KEY;
           } catch (dbErr2) {
@@ -198,7 +181,6 @@ export async function GET(req: NextRequest) {
 
     // Set x-user-key cookie (from DB or Botpress response). Fallback to a generated value if missing.
     const finalUserKey = xUserKey || dbUser?.key || 'anonymous';
-    console.log('[callback] setting x-user-key cookie=', finalUserKey);
     res.cookies.set('x-user-key', finalUserKey, {
       httpOnly: false,
       path: '/',

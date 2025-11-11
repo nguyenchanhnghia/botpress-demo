@@ -8,6 +8,8 @@ export interface LDAPUser {
   department?: string;
   title?: string;
   displayName?: string;
+  givenName?: string;
+  company?: string;
 }
 
 export interface AuthToken {
@@ -20,6 +22,8 @@ export interface AuthToken {
   exp: number;
   aud: string;
   iss: string;
+  givenName?: string;
+  company?: string;
 }
 
 const AUTH_COOKIE_NAME = 'auth_token';
@@ -127,7 +131,9 @@ export const ldapAuth = {
         email: payload.email as string,
         department: payload.department as string,
         title: payload.title as string,
-        displayName: payload.displayName as string
+        displayName: payload.displayName as string,
+        givenName: payload.givenName as string,
+        company: payload.company as string
       };
 
       // If running in the browser, persist client-side cookies and cleanup PKCE cookie
@@ -162,7 +168,9 @@ export const ldapAuth = {
         email: payload.email as string,
         department: payload.department as string,
         title: payload.title as string,
-        displayName: payload.displayName as string
+        displayName: payload.displayName as string,
+        givenName: payload.givenName as string,
+        company: payload.company as string
       };
     } catch (error) {
       console.error('Token verification error:', error);

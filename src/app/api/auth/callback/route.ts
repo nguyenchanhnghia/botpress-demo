@@ -32,11 +32,6 @@ import Users from '@/lib/aws/users';
  */
 const BOTPRESS_BASE_URL = process.env.BOTPRESS_BASE_URL || 'https://chat.botpress.cloud/6e333992-4bc2-452f-9089-990386321bf5';
 
-function getOrigin(req: NextRequest) {
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-  return `${proto}://${host}`;
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,11 +41,11 @@ export async function GET(req: NextRequest) {
     const error = searchParams.get('error');
 
     if (error) {
-      return NextResponse.redirect(new URL('/login?error=oauth_error', getOrigin(req)));
+      return NextResponse.redirect(new URL('/login?error=oauth_error', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
     }
 
     if (!code) {
-      return NextResponse.redirect(new URL('/login?error=no_code', getOrigin(req)));
+      return NextResponse.redirect(new URL('/login?error=no_code', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
     }
 
     // PKCE: read the code_verifier stored in a short-lived cookie during the initial authorization request
@@ -71,10 +66,10 @@ export async function GET(req: NextRequest) {
       });
 
       if (!result) {
-        return NextResponse.redirect(new URL('/login?error=auth_failed', getOrigin(req)));
+        return NextResponse.redirect(new URL('/login?error=auth_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
       }
 
-      const res = NextResponse.redirect(new URL('/botChat', getOrigin(req)));
+      const res = NextResponse.redirect(new URL('/botChat', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
 
 
       res.cookies.set('auth_token', result.token, {
@@ -93,6 +88,7 @@ export async function GET(req: NextRequest) {
       // 3. Persist the user record with the Botpress key so future logins can find it locally.
       let dbUser: any = null;
       let xUserKey: string | undefined = undefined;
+      const serviceKey = process.env.BOTPRESS_API_USER_KEY;
 
       try {
         // If the ID token includes an email, try the (fast) GSI query to locate the user in DynamoDB
@@ -101,9 +97,9 @@ export async function GET(req: NextRequest) {
         }
 
         if (dbUser) {
-          xUserKey = dbUser.key || dbUser.userKey || dbUser.botpressKey;
+          xUserKey = dbUser.key || serviceKey;
         } else {
-          const serviceKey = process.env.BOTPRESS_API_USER_KEY;
+
           if (serviceKey) {
             // Call Botpress server API to create or fetch a user. The Botpress endpoint expects
             // an 'x-user-key' header and a body with name/pictureUrl/profile fields.
@@ -120,13 +116,14 @@ export async function GET(req: NextRequest) {
               })
             });
 
-
             if (!!bpResp?.ok) {
               const bpData = await bpResp.json();
               const remoteKey = bpData?.key || process.env.BOTPRESS_API_USER_KEY;
               // Persist the user into DynamoDB using the Botpress-provided key (or configured fallback).
               const created = await Users.create({
                 user_id: bpData.user?.id || result.user?.email,
+                givenName: result.user?.givenName,
+                company: result.user?.company,
                 email: result.user?.email,
                 displayName: result.user?.displayName,
                 sub: result.user?.sub,
@@ -141,6 +138,9 @@ export async function GET(req: NextRequest) {
               // Botpress returned an HTTP error; save the response body for debugging and
               // persist a DB entry using the configured fallback key so login can continue.
               const created = await Users.create({
+                user_id: result.user?.email,
+                givenName: result.user?.givenName,
+                company: result.user?.company,
                 email: result.user?.email,
                 displayName: result.user?.displayName,
                 sub: result.user?.sub,
@@ -155,6 +155,8 @@ export async function GET(req: NextRequest) {
             // No service key configured: create a local DB user using the configured fallback key
             const created = await Users.create({
               user_id: result.user?.email,
+              givenName: result.user?.givenName,
+              company: result.user?.company,
               email: result.user?.email,
               displayName: result.user?.displayName,
               sub: result.user?.sub,
@@ -196,10 +198,10 @@ export async function GET(req: NextRequest) {
       return res;
     } catch (err) {
       console.error('Token exchange error:', err);
-      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', getOrigin(req)));
+      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
     }
   } catch (err) {
     console.error('Callback error:', err);
-    return NextResponse.redirect(new URL('/login?error=callback_error', getOrigin(req)));
+    return NextResponse.redirect(new URL('/login?error=callback_error', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
   }
 }

@@ -2,111 +2,191 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { ldapAuth } from '@/lib/ldap-auth';
+import Image from 'next/image';
+import Typewriter from '@/components/common/TypeWriter';
 
 export default function LoginPage() {
-    const router = useRouter();
-    const [error, setError] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
+  );
+}
 
-    useEffect(() => {
-        // Check if user is already authenticated
-        if (auth.isAuthenticated()) {
-            router.push('/dashboard');
-            return;
-        }
+function LoginContent() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-        // Check for error parameters from window.location.search (client-side only)
-        let errorParam: string | null = null;
-        try {
-            const params = new URLSearchParams(window.location.search);
-            errorParam = params.get('error');
-        } catch {
-            errorParam = null;
-        }
-        if (errorParam) {
-            switch (errorParam) {
-                case 'oauth_error':
-                    setError('OAuth authentication failed');
-                    break;
-                case 'no_code':
-                    setError('No authorization code received');
-                    break;
-                case 'auth_failed':
-                    setError('Authentication failed');
-                    break;
-                case 'token_exchange_failed':
-                    setError('Token exchange failed');
-                    break;
-                case 'callback_error':
-                    setError('Callback error occurred');
-                    break;
-                case 'token_expired':
-                    setError('Your session has expired. Please log in again.');
-                    break;
-                case 'no_token':
-                    setError('No authentication token found. Please log in.');
-                    break;
-                case 'invalid_token':
-                    setError('Invalid authentication token. Please log in again.');
-                    break;
-                default:
-                    setError('An unknown error occurred');
-            }
-        }
-    }, [router]);
+  const TAGLINES = [
+    'AI-powered assistant for VietJet Thailand employees',
+    'Secure single sign-on for VietJet Thailand',
+    'AI-powered assistant for internal knowledge',
+    'Designed for TVJ employees only',
+  ];
 
-    const handleLogin = async () => {
-        setIsLoading(true);
-        try {
-            // Use centralized LDAP auth helper to get the authorization URL (handles PKCE)
-            const url = await ldapAuth.getAuthorizationUrl();
-            // In case the helper returned a relative or absolute URL, redirect the browser
-            window.location.href = url;
-        } catch (error) {
-            console.error('Login error:', error);
-            setError('Failed to initiate login');
-            setIsLoading(false);
-        }
+
+  // Parse error param from query string
+  useEffect(() => {
+    if (auth.isAuthenticated()) {
+      router.push('/botChat');
+      return;
+    }
+    const e = params.get('error');
+    if (!e) return;
+    const map: Record<string, string> = {
+      oauth_error: 'OAuth authentication failed.',
+      no_code: 'No authorization code received.',
+      auth_failed: 'Authentication failed.',
+      token_exchange_failed: 'Token exchange failed.',
+      callback_error: 'Callback error occurred.',
+      token_expired: 'Your session has expired. Please log in again.',
+      no_token: 'No authentication token found. Please log in.',
+      invalid_token: 'Invalid authentication token. Please log in again.',
     };
+    setError(map[e] ?? 'An unknown error occurred.');
+  }, [params, router]);
 
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-white py-12 px-4 sm:px-6 lg:px-8">
-            <div className="w-full max-w-md">
-                <div className="bg-white shadow-lg rounded-2xl p-8">
-                    <div className="text-center">
-                        <h2 className="text-3xl font-extrabold text-gray-900">Sign in to TVJ Internal AI Assistant</h2>
-                        <p className="mt-2 text-sm text-gray-600">Use your Vietjet email to access the system</p>
-                    </div>
+  const handleLogin = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const url = await ldapAuth.getAuthorizationUrl();
+      window.location.href = url; // redirect to IdP
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Failed to initiate login.');
+      setIsLoading(false);
+    }
+  }, [isLoading]);
 
-                    {error && (
-                        <div className="mt-6 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
-                            {error}
-                        </div>
-                    )}
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+      {/* ===== Subtle grid background ===== */}
+      <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:22px_22px] opacity-60" />
 
-                    <div className="mt-8">
-                        <button
-                            onClick={handleLogin}
-                            disabled={isLoading}
-                            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-[#ed1823] hover:bg-[#c71218] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#ed1823]/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isLoading ? (
-                                <div className="flex items-center">
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                    Redirecting...
-                                </div>
-                            ) : (
-                                'Sign in with VietJet Email'
-                            )}
-                        </button>
+      {/* ===== Animated background blobs ===== */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-500 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-floatPulse" />
+        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-floatPulse animation-delay-2000" />
+        <div className="absolute -bottom-8 left-1/3 w-96 h-96 bg-neutral-900 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-floatPulse animation-delay-4000" />
+      </div>
 
-                    </div>
+      {/* ===== Login Card ===== */}
+      <div className="relative w-full max-w-md">
+        {/* Glowing animated border */}
+        <div className="animate-rotate-border rounded-3xl bg-conic/[from_var(--border-angle)] from-white via-red-500 to-yellow-400 p-[1px] shadow-[0_18px_60px_rgba(0,0,0,0.25)]">
+          <div className="relative rounded-3xl bg-white/90 backdrop-blur-2xl border border-white/60 px-8 py-10 text-xs">
+            {/* Top accent line */}
+            <div className="absolute inset-x-10 -top-px h-px bg-gradient-to-r from-transparent via-red-500/60 to-transparent" />
+
+            <div className="text-center">
+              {/* Logo row */}
+              <div className="flex justify-center items-center mb-6 gap-3">
+                <Image
+                  src="/images/logo_vietjetair.png"
+                  alt="VietJet Logo"
+                  width={130}
+                  height={40}
+                  className="object-contain"
+                />
+                <div className="w-px h-8 bg-gradient-to-b from-gray-200 via-gray-300 to-gray-200" />
+                <Image
+                  src="https://chatbotcdn.socialenable.co/vietjet-air/assets/images/amy-full-body.png"
+                  alt="Amy"
+                  width={40}
+                  height={40}
+                  className="object-cover rounded-full shadow-md shadow-red-200"
+                />
+              </div>
+
+              {/* Status pill */}
+              <div className="mb-3 flex justify-center">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-900 text-[10px] text-gray-100 shadow-md">
+                  <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="uppercase tracking-[0.16em]">AI Employee Support • TVJ</span>
                 </div>
+              </div>
+
+              {/* Title */}
+              <div className="space-y-1 mb-1">
+                <h1 className="text-3xl font-bold text-gray-900 text-left leading-tight">
+                  TVJ Internal
+                </h1>
+                <h1 className="text-3xl font-bold text-gray-900 text-right leading-tight">
+                  <span className="text-[#d62323]">AI Assistant</span>
+                </h1>
+              </div>
+
+              {/* Animated tagline (typewriter) */}
+              <div className="mt-3 h-5 text-left">
+                <Typewriter
+                  texts={TAGLINES}
+                  typingSpeed={70}
+                  deletingSpeed={35}
+                  pauseTime={1000}
+                >
+                  {(text: string) => (
+                    <p className="text-[11px] font-mono text-gray-500 tracking-tight flex items-center gap-1">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                      <span>{text}</span>
+                    </p>
+                  )}
+                </Typewriter>
+              </div>
             </div>
+
+            {/* Error box */}
+            {error && (
+              <div
+                role="alert"
+                className="mt-6 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-[11px] text-left"
+              >
+                {error}
+              </div>
+            )}
+
+            {/* Divider line */}
+            <div className="mt-4 mb-6 h-px bg-gradient-to-r from-transparent via-[#d62323] to-transparent" />
+
+            {/* Description + button */}
+            <p className="text-sm text-gray-600 text-left">
+              Use your VietJet email to access the system.
+            </p>
+
+            <div className="mt-3">
+              <button
+                onClick={handleLogin}
+                disabled={isLoading}
+                className="group relative w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold text-white bg-[#ed1823] hover:bg-[#c71218] hover:cursor-pointer shadow-lg shadow-rose-500/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#ed1823]/60 disabled:opacity-60 transition"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Redirecting...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="w-5 h-5 fill-current"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path d="M2 6.5A2.5 2.5 0 0 1 4.5 4h15A2.5 2.5 0 0 1 22 6.5v11A2.5 2.5 0 0 1 19.5 20h-15A2.5 2.5 0 0 1 2 17.5v-11Zm2 .5v.382l8 5.333 8-5.333V7H4Zm16 2.118-7.35 4.893a1.5 1.5 0 0 1-1.3 0L4 9.118V17.5A.5.5 0 0 0 4.5 18h15a.5.5 0 0 0 .5-.5V9.118Z" />
+                    </svg>
+                    Sign in with VietJet Email
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
-    );
+      </div>
+    </div>
+  );
 }

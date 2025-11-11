@@ -10,15 +10,12 @@ export default function Home() {
 
   useEffect(() => {
     const isAuth = auth.isAuthenticated();
-    console.log('🔍 Home page: Authentication status:', isAuth);
 
     if (isAuth) {
       setAuthStatus('✅ Authenticated - Redirecting to dashboard');
-      console.log('🔄 Home page: Redirecting to dashboard');
       router.push('/dashboard');
     } else {
       setAuthStatus('❌ Not authenticated - Redirecting to login');
-      console.log('🔄 Home page: Redirecting to login');
       router.push('/login');
     }
   }, [router]);

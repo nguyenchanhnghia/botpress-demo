@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Missing x-user-key' }, { status: 401 });
     }
     try {
-        console.log('process.env.BOT_PRESS_API_URL', process.env.BOT_PRESS_API_URL);
         const res = await fetch(`${process.env.BOT_PRESS_API_URL}/v1/files?tags.source=knowledge-base`, {
             method: 'GET',
             headers: {
@@ -22,7 +21,6 @@ export async function GET(req: NextRequest) {
             },
         });
         const data = await res.json();
-        console.log('data', data);
         if (!res.ok) {
             return NextResponse.json({ error: data.error || 'Failed to fetch files' }, { status: res.status });
         }
@@ -39,7 +37,6 @@ export async function PUT(req: NextRequest) {
     }
     try {
         const body = await req.json();
-        console.log('body', body);
         const res = await fetch(`${process.env.BOT_PRESS_API_URL}/v1/files/${body.id}`, {
             method: 'PUT',
             headers: {
@@ -51,7 +48,6 @@ export async function PUT(req: NextRequest) {
             body: JSON.stringify(body.data),
         });
         const data = await res.json();
-        console.log('data', data);
         if (!res.ok) {
             return NextResponse.json({ error: data.error || 'Failed to update file' }, { status: res.status });
         }

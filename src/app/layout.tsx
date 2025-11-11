@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VZ Wiki Frontend",
-  description: "A Next.js application with authentication and webchat functionality",
+  title: "TVJ Internal AI Assistant",
+  description: "AI-powered assistant for VietJet Thailand employees",
 };
 
 export default function RootLayout({

@@ -26,7 +26,7 @@ export const config: {
       : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/auth/callback`),
 
   // App Configuration
-  appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://botpress-demo-3nc9-git-main-nghiancs-projects.vercel.app/',
+  appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com/api/auth/callback',
 
   // Cookie Configuration
   cookieConfig: {
