@@ -9,6 +9,13 @@ const nextConfig = {
             },
         ],
     },
+    webpack(config) {
+        // Remove the CSS minifier (CssMinimizerPlugin) that breaks conic gradients
+        config.optimization.minimizer = config.optimization.minimizer.filter((fn) => {
+            return !fn.toString().includes('CssMinimizerPlugin');
+        });
+        return config;
+    },
 };
 
 module.exports = nextConfig;

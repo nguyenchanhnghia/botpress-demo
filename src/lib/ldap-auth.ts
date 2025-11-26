@@ -372,6 +372,10 @@ export const botpressAPI = {
   // Get or create user
   getOrCreateUser: async (userKey: string) => {
     return retryWithBackoff(async () => {
+      const user = auth.getCurrentUser();
+      if (!user) {
+        throw new Error('No authenticated user found');
+      }
       const response = await fetch(`${BOTPRESS_BASE_URL}/users/get-or-create`, {
         method: 'POST',
         headers: {
@@ -379,7 +383,7 @@ export const botpressAPI = {
           'x-user-key': userKey
         },
         body: JSON.stringify({
-          name: 'Nghia Nguyen',
+          name: user.displayName || user.email,
         })
       });
 
