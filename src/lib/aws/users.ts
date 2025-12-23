@@ -92,9 +92,21 @@ const Users = {
         return merged;
     },
 
+    /**
+     * List users by scanning the table. Use sparingly on very large tables.
+     */
+    async list(limit?: number): Promise<UserRecord[]> {
+        const params: any = { TableName: USERS_TABLE };
+        if (typeof limit === 'number') params.Limit = limit;
+        const items = await import('./dynamo').then(m => m.scanTable<UserRecord>(params));
+        return items || [];
+    },
+
     async delete(id: string): Promise<void> {
         if (!id) throw new Error('id required');
-        await deleteItem(USERS_TABLE, { id });
+        const key: Record<string, any> = {};
+        key[USERS_TABLE_PK] = id;
+        await deleteItem(USERS_TABLE, key);
     }
 };
 

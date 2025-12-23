@@ -57,14 +57,6 @@ export async function GET(req: NextRequest) {
       // PKCE verifier when available so the token endpoint can validate the PKCE flow.
       const result = await ldapAuth.exchangeCodeForToken(code, codeVerifier || undefined);
 
-      if (result?.user) console.log('[api/callback] user claims:', {
-        sub: result.user.sub,
-        email: result.user.email,
-        displayName: result.user.displayName,
-        department: result.user.department,
-        title: result.user.title
-      });
-
       if (!result) {
         return NextResponse.redirect(new URL('/login?error=auth_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
       }

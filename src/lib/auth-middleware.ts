@@ -36,7 +36,7 @@ export async function requireAuth(req: NextRequest): Promise<AuthenticatedUser |
             email: user.email,
             department: user.department,
             title: user.title,
-            displayName: user.displayName
+            displayName: user.displayName,
         };
     } catch (error) {
         console.error('Auth middleware error:', error);

@@ -24,10 +24,10 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
 
   const TAGLINES = [
-    'AI-powered assistant for VietJet Thailand employees',
-    'Secure single sign-on for VietJet Thailand',
-    'AI-powered assistant for internal knowledge',
-    'Designed for TVJ employees only',
+    'Banh Mi 🥖 – your VietJet Thailand Employee Support AI',
+    'Ask Banh Mi about policies, SOPs, and internal processes',
+    'Banh Mi helps you find answers faster, my colleague',
+    'Designed for TVJ employees only – secure and internal',
   ];
 
   // Parse error param from query string
@@ -123,23 +123,23 @@ function LoginContent() {
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-900 text-[10px] text-gray-100 shadow-md">
                     <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="uppercase tracking-[0.16em]">
-                      AI Employee Support • TVJ
+                      Banh Mi • Employee Support AI
                     </span>
                   </div>
                 </div>
 
                 {/* Title */}
-                <div className="space-y-1 mb-1">
+                <div className="space-y-1 mb-1 mt-8">
                   <h1 className="text-3xl font-bold text-gray-900 text-left leading-tight">
-                    TVJ Internal
+                    Meet <span className="text-[#d62323]">Banh Mi</span>
                   </h1>
-                  <h1 className="text-3xl font-bold text-gray-900 text-right leading-tight">
-                    <span className="text-[#d62323]">AI Assistant</span>
-                  </h1>
+                  <h2 className="text-sm font-medium text-gray-500 text-right tracking-wide">
+                    VietJet Thailand Employee Support AI
+                  </h2>
                 </div>
 
                 {/* Animated tagline (typewriter) */}
-                <div className="mt-3 h-5 text-left">
+                <div className="mt-8 h-5 text-left">
                   <Typewriter
                     texts={TAGLINES}
                     typingSpeed={70}
@@ -167,11 +167,11 @@ function LoginContent() {
               )}
 
               {/* Divider line */}
-              <div className="mt-4 mb-6 h-px bg-gradient-to-r from-transparent via-[#d62323] to-transparent" />
+              <div className="mt-1 mb-6 h-px bg-gradient-to-r from-transparent via-[#d62323] to-transparent" />
 
               {/* Description + button */}
               <p className="text-sm text-gray-600 text-left">
-                Use your VietJet email to access the system.
+                Sign in with your VietJet email to chat with Banh Mi and get internal support.
               </p>
 
               <div className="mt-3">

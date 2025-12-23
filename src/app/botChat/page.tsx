@@ -5,6 +5,8 @@ import Image from "next/image";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useRouter } from "next/navigation";
 import { auth, botpressAPI } from "@/lib/auth";
+import UserMenu from "@/components/common/UserMenu";
+import AIThinking from "./components/AIThinking";
 
 interface Message {
   id: string;
@@ -28,6 +30,7 @@ export default function BotChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const eventSourceRef = useRef<{ close: () => void } | null>(null);
@@ -45,13 +48,13 @@ export default function BotChatPage() {
   const [initStep, setInitStep] = useState<1 | 2 | 3>(1);
   const [minInitTimeDone, setMinInitTimeDone] = useState(false);
 
-  let isMounted = true;
+  const isMountedRef = useRef(true);
 
   // ===== Placeholder typing animation (input) =====
   const placeholderPhrases = [
-    "Ask me anything about VietJet policies ✈️",
+    "Ask Banh Mi about VietJet policies ✈️",
     "Need help with leave requests? 🌴",
-    "How can I assist you today, my colleague?",
+    "How can Banh Mi assist you today, my colleague?",
     "Ask HR, IT, COM or SOP-related questions",
   ];
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -60,7 +63,11 @@ export default function BotChatPage() {
 
   // Drive 3-step initializing timeline
   useEffect(() => {
-    if (!initializing) return;
+    if (!initializing) {
+      // When initialization completes, ensure minInitTimeDone is set
+      setMinInitTimeDone(true);
+      return;
+    }
 
     setInitStep(1);
     setMinInitTimeDone(false);
@@ -69,10 +76,20 @@ export default function BotChatPage() {
     const t2 = setTimeout(() => setInitStep(3), 1600);
     const t3 = setTimeout(() => setMinInitTimeDone(true), 2400);
 
+    // Safety timeout: if initialization takes too long, force completion after 10 seconds
+    const safetyTimeout = setTimeout(() => {
+      if (isMountedRef.current) {
+        console.warn("Initialization timeout - forcing completion");
+        setInitializing(false);
+        setMinInitTimeDone(true);
+      }
+    }, 10000);
+
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearTimeout(safetyTimeout);
     };
   }, [initializing]);
 
@@ -181,7 +198,7 @@ export default function BotChatPage() {
         });
       }
 
-      if (!isMounted) return;
+      if (!isMountedRef.current) return;
 
       setConversation({
         id: conversationData.id,
@@ -189,62 +206,72 @@ export default function BotChatPage() {
       });
 
       // 3) Load messages
-      const messagesResponse = await botpressAPI.listMessages(
-        userKey,
-        conversationData.id
-      );
-      if (!isMounted) return;
+      setLoadingMessages(true);
+      try {
+        const messagesResponse = await botpressAPI.listMessages(
+          userKey,
+          conversationData.id
+        );
+        if (!isMountedRef.current) {
+          setLoadingMessages(false);
+          return;
+        }
 
-      const formattedMessages = (messagesResponse.messages || messagesResponse)
-        .map((msg: any) => ({
-          id: msg.id,
-          text: msg.payload?.text || msg.text || "Unknown message",
-          sender: msg.isBot ? "bot" : "user",
-          createdAt: msg.createdAt || msg.createdOn || msg.timestamp,
-          userId: msg.isBot ? msg.botId : msg.userId,
-          ...(msg.options ? { options: msg.options } : {}),
-        }));
+        const formattedMessages = (messagesResponse.messages || messagesResponse)
+          .map((msg: any) => ({
+            id: msg.id,
+            text: msg.payload?.text || msg.text || "Unknown message",
+            sender: msg.isBot ? "bot" : "user",
+            createdAt: msg.createdAt || msg.createdOn || msg.timestamp,
+            userId: msg.isBot ? msg.botId : msg.userId,
+            ...(msg.options ? { options: msg.options } : {}),
+          }));
 
-      const uniqueMessages = formattedMessages.filter(
-        (msg: Message, index: number, self: Message[]) =>
-          index === self.findIndex((m: Message) => m.id === msg.id)
-      );
-      uniqueMessages.sort(
-        (a: Message, b: Message) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
+        const uniqueMessages = formattedMessages.filter(
+          (msg: Message, index: number, self: Message[]) =>
+            index === self.findIndex((m: Message) => m.id === msg.id)
+        );
+        uniqueMessages.sort(
+          (a: Message, b: Message) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
 
-      // If no messages, send start_conversation event
-      if (uniqueMessages.length === 0) {
-        setBotTyping(true);
-        const currentUser = auth.getCurrentUser();
-        let nameOrEmail = "colleague";
-        if (currentUser) {
-          if (currentUser.displayName) {
-            nameOrEmail = currentUser.displayName;
-          } else if (currentUser.email) {
-            const local = currentUser.email.split("@")[0] || currentUser.email;
-            nameOrEmail = local
-              .replace(/[._]+/g, " ")
-              .split(" ")
-              .map(
-                (part) => part.charAt(0).toUpperCase() + part.slice(1)
-              )
-              .join(" ");
+        // If no messages, send start_conversation event
+        if (uniqueMessages.length === 0) {
+          setBotTyping(true);
+          const currentUser = auth.getCurrentUser();
+          let nameOrEmail = "colleague";
+          if (currentUser) {
+            if (currentUser.displayName) {
+              nameOrEmail = currentUser.displayName;
+            } else if (currentUser.email) {
+              const local = currentUser.email.split("@")[0] || currentUser.email;
+              nameOrEmail = local
+                .replace(/[._]+/g, " ")
+                .split(" ")
+                .map(
+                  (part) => part.charAt(0).toUpperCase() + part.slice(1)
+                )
+                .join(" ");
+            }
+          }
+
+          const welcomePayload = JSON.stringify({
+            msg: `My name is ${nameOrEmail}`,
+            type: "start_conversation",
+          });
+
+          if (conversationData?.id) {
+            botpressAPI.sendMessage(userKey, conversationData.id, welcomePayload);
           }
         }
 
-        const welcomePayload = JSON.stringify({
-          msg: `My name is ${nameOrEmail}`,
-          type: "start_conversation",
-        });
-
-        if (conversationData?.id) {
-          botpressAPI.sendMessage(userKey, conversationData.id, welcomePayload);
+        setMessages(uniqueMessages);
+      } finally {
+        if (isMountedRef.current) {
+          setLoadingMessages(false);
         }
       }
-
-      setMessages(uniqueMessages);
 
       // 4) SSE listener
       if (eventSourceRef.current) {
@@ -294,20 +321,20 @@ export default function BotChatPage() {
         }
       );
 
-      if (!isMounted) {
+      if (!isMountedRef.current) {
         eventSource.close();
         return;
       }
       eventSourceRef.current = eventSource;
     } catch (err) {
       console.error("Initialization error:", err);
-      if (isMounted) {
+      if (isMountedRef.current) {
         setError(
           err instanceof Error ? err.message : "Failed to initialize chat"
         );
       }
     } finally {
-      if (isMounted) {
+      if (isMountedRef.current) {
         setInitializing(false);
       }
     }
@@ -320,7 +347,7 @@ export default function BotChatPage() {
     initializeChat();
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
@@ -364,7 +391,7 @@ export default function BotChatPage() {
       }
       botTypingTimeoutRef.current = setTimeout(() => {
         setBotTyping(false);
-      }, 5000);
+      }, 30000);
     } else {
       if (botTypingTimeoutRef.current) {
         clearTimeout(botTypingTimeoutRef.current);
@@ -475,7 +502,7 @@ export default function BotChatPage() {
                   <span className="text-white text-lg">AI</span>
                 </div>
                 <div className="text-xs font-medium text-gray-700 uppercase tracking-wide">
-                  TVJ Internal Assistant
+                  Banh Mi · Employee Support AI
                 </div>
               </div>
               <div className="flex items-center gap-2 text-[11px] text-emerald-600 bg-emerald-50/80 border border-emerald-100 px-2 py-1 rounded-full">
@@ -488,7 +515,7 @@ export default function BotChatPage() {
             {/* Title + subtitle */}
             <div className="space-y-1 mb-5">
               <h2 className="text-xl font-semibold text-gray-900">
-                Preparing your AI cockpit
+                Preparing Banh Mi workspace
               </h2>
               <p className="text-xs text-gray-500">
                 Securely connecting to VietJet Thailand systems and loading your
@@ -565,37 +592,48 @@ export default function BotChatPage() {
             }`}
         >
           {/* Header */}
-          <div className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-white/20 p-4">
-            <div className="max-w-4xl mx-auto flex justify-between items-center">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
+          <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-white/20 p-3 sm:p-4">
+            <div className="max-w-4xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {/* Left: Avatar + title */}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex items-center justify-center shrink-0">
                   <Image
                     src="https://chatbotcdn.socialenable.co/vietjet-air/assets/images/amy-full-body.png"
-                    alt="Amy"
+                    alt="Banh Mi"
                     width={40}
                     height={40}
                     className="object-cover"
                   />
                 </div>
-                <div>
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-red-600 to-yellow-600 bg-clip-text text-transparent">
-                    TVJ Internal Assistant
+                <div className="min-w-0">
+                  <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-red-600 to-yellow-600 bg-clip-text text-transparent truncate">
+                    Banh Mi · Employee Support AI
                   </h1>
+                  <p className="text-[11px] sm:text-xs text-gray-500">
+                    VietJet Thailand internal assistant for policies &amp; SOPs
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center space-x-4">
+
+              {/* Right: Actions – Clear Chat + user dropdown (Logout) */}
+              <div className="flex w-full sm:w-auto items-center justify-stretch sm:justify-end gap-2">
                 <button
                   onClick={() => initializeChat(true)}
-                  className="px-3 py-1 text-xs bg-yellow-300 text-black rounded-md hover:brightness-95"
+                  className="flex-1 sm:flex-none px-3 py-2 text-xs bg-yellow-300 text-black rounded-md hover:brightness-95 transition"
                 >
                   Clear Chat
                 </button>
-                <button
-                  onClick={handleLogout}
-                  className="px-4 py-2 text-sm bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl hover:from-red-600 hover:to-pink-600 transition-all duration-200 transform hover:scale-105 font-semibold shadow-lg"
-                >
-                  Logout
-                </button>
+                <UserMenu
+                  items={[
+                    { label: "Users", href: "/admin-cms/users", adminOnly: true },
+                    { label: "Knowledge Base", href: "/admin-cms/knowleage-base", adminOnly: true },
+                    { label: "Images", href: "/admin-cms/images", adminOnly: true },
+                    {
+                      label: "Logout",
+                      onClick: handleLogout,
+                    },
+                  ]}
+                />
               </div>
             </div>
           </div>
@@ -762,23 +800,18 @@ export default function BotChatPage() {
                   </div>
                 );
               })}
-              {botTyping && (
-                <div className="flex justify-start">
-                  <div className="px-6 py-3 rounded-2xl bg-white/70 backdrop-blur-sm text-gray-800 border border-white/20">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      />
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      />
-                    </div>
+
+              {/* Show loading indicator when fetching messages */}
+              {loadingMessages && (
+                <div className="flex justify-center py-4">
+                  <div className="text-sm text-gray-500 flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400" />
+                    Loading messages...
                   </div>
                 </div>
               )}
+              {/* Only show AIThinking when bot is actually typing (not loading messages) */}
+              {botTyping && !loadingMessages && <AIThinking />}
               {error && (
                 <div className="text-center p-4 bg-red-100/80 backdrop-blur-sm rounded-xl border border-red-200/50">
                   <p className="text-red-600 text-sm">{error}</p>

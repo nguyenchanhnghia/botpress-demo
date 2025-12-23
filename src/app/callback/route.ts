@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
               })
             });
 
+
             if (bpResp.ok) {
               const bpData = await bpResp.json();
               remoteKey = bpData?.key || bpData?.userKey || bpData?.xUserKey || bpData?.token || bpData?.id;
@@ -117,7 +118,9 @@ export async function GET(req: NextRequest) {
                 sub: user.sub,
                 key: remoteKey || DEFAULT_BOTPRESS_KEY,
                 botpressResponse: bpData,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                department: user.department,
+                title: user.title
               });
               dbUser = created;
               xUserKey = remoteKey || DEFAULT_BOTPRESS_KEY;

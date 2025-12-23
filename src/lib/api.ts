@@ -22,23 +22,36 @@ export async function apiRequest<T = any>(
     }
 
     const finalHeaders = { ...headers };
+    // Note: auth_token cookie is httpOnly and will be sent automatically with fetch
+    // The server-side middleware will read it from cookies
+    // If a readable token is available, we can add it to Authorization header
     if (withAuth) {
-        const accessToken = Cookies.get('accessToken');
-        if (accessToken) {
-            finalHeaders['Authorization'] = `Bearer ${accessToken}`;
+        // Try to get token from readable cookie if available
+        const authToken = Cookies.get('auth_token');
+        if (authToken) {
+            finalHeaders['Authorization'] = `Bearer ${authToken}`;
         }
     }
+
+    // Check if body is FormData
+    const isFormData = body instanceof FormData;
 
     const fetchOptions: RequestInit = {
         method,
         headers: {
-            'Content-Type': 'application/json',
+            // Don't set Content-Type for FormData - browser will set it with boundary
+            ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
             ...finalHeaders,
         },
+        credentials: 'include', // Ensure cookies (including httpOnly) are sent
     };
 
     if (body !== undefined && body !== null) {
+        if (isFormData) {
+            fetchOptions.body = body;
+        } else {
         fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+        }
     }
 
     const res = await fetch(fullUrl, fetchOptions);
