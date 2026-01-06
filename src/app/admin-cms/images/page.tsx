@@ -1,29 +1,66 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/lib/api';
 import { Button } from '@/components/common/Button';
 import { useUser } from '@/components/auth/UserContext';
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_FILE_SIZE } from '@/lib/constants/common';
 
 interface ImageItem {
+  id: string;
   key: string;
   url?: string; // Presigned URL
   contentType: string;
-  uploadedAt?: string;
+  fileName: string;
+  fileSize: number;
+  folder: string;
+  uploadedAt: string;
+  uploadedBy: string;
 }
 
 export default function AdminImagesPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   const [images, setImages] = useState<ImageItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({}); // Cache presigned URLs by key
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Admin-only access check
+  // Fetch images from DynamoDB
+  const fetchImages = useCallback(async () => {
+    if (!user || (user.role !== 'admin' && user.role !== 'super-admin')) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiRequest<{
+        success: boolean;
+        images: ImageItem[];
+      }>('/api/admin/images', {
+        method: 'GET',
+        withAuth: true,
+      });
+
+      // Sort by uploadedAt descending (newest first)
+      const sortedImages = (response.images || []).sort((a, b) => {
+        return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+      });
+
+      setImages(sortedImages);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch images');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  // Admin-only access check and fetch images
   useEffect(() => {
     if (userLoading) return;
 
@@ -32,25 +69,27 @@ export default function AdminImagesPage() {
       return;
     }
 
-    if (user.role !== 'admin') {
+    if (user.role !== 'admin' && user.role !== 'super-admin') {
       setError('Access denied. Admin privileges required.');
+      return;
     }
-  }, [user, userLoading, router]);
+
+    // Fetch images from DynamoDB
+    fetchImages();
+  }, [user, userLoading, router, fetchImages]);
 
   // Handle file upload
   const handleFileUpload = async (file: File) => {
     if (!file) return;
 
     // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      setError(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type as any)) {
+      setError(`Invalid file type. Allowed: ${ALLOWED_IMAGE_TYPES.join(', ')}`);
       return;
     }
 
-    // Validate file size (10MB max)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
+    // Validate file size
+    if (file.size > MAX_IMAGE_FILE_SIZE) {
       setError('File size exceeds 10MB limit');
       return;
     }
@@ -64,27 +103,50 @@ export default function AdminImagesPage() {
 
       const response = await apiRequest<{
         success: boolean;
-        image: { key: string; url: string; contentType: string };
+        image: {
+          id: string;
+          key: string;
+          url: string;
+          contentType: string;
+          fileName: string;
+          fileSize: number;
+          folder: string;
+          uploadedAt: string;
+          uploadedBy: string;
+        };
       }>('/api/admin/images/upload', {
         method: 'POST',
         body: formData,
         withAuth: true,
       });
 
-      // Add to images list
-      setImages((prev) => [
-        {
+      // Append the new image to the list (avoid refetching from DynamoDB to save costs)
+      if (response.image) {
+        const newImage: ImageItem = {
+          id: response.image.id,
           key: response.image.key,
+          url: response.image.url,
           contentType: response.image.contentType,
-          uploadedAt: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+          fileName: response.image.fileName,
+          fileSize: response.image.fileSize,
+          folder: response.image.folder,
+          uploadedAt: response.image.uploadedAt,
+          uploadedBy: response.image.uploadedBy,
+        };
+        setImages((prev) => [newImage, ...prev]); // Add to beginning (newest first)
+
+        // Fetch presigned URL for the newly uploaded image
+        const presignedUrl = await getPresignedUrl(newImage.key);
+        if (presignedUrl) {
+          setImageUrls((prev) => ({ ...prev, [newImage.key]: presignedUrl }));
+        }
+      }
 
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      setSelectedFile(null);
     } catch (err: any) {
       setError(err.message || 'Failed to upload image');
     } finally {
@@ -92,8 +154,13 @@ export default function AdminImagesPage() {
     }
   };
 
-  // Get presigned URL for image preview
-  const getImagePreview = async (key: string) => {
+  // Get presigned URL for an image key
+  const getPresignedUrl = async (key: string): Promise<string | null> => {
+    // Check cache first
+    if (imageUrls[key]) {
+      return imageUrls[key];
+    }
+
     try {
       const response = await apiRequest<{
         success: boolean;
@@ -105,18 +172,102 @@ export default function AdminImagesPage() {
         withAuth: true,
       });
 
-      setPreviewUrl(response.url);
-      setPreviewKey(key);
+      // Cache the presigned URL
+      setImageUrls((prev) => ({ ...prev, [key]: response.url }));
+      return response.url;
     } catch (err: any) {
-      setError(err.message || 'Failed to load image preview');
+      console.error('Failed to get presigned URL:', err);
+      return null;
     }
   };
 
-  // Handle file input change
+  // Get presigned URL for image preview
+  const getImagePreview = async (key: string) => {
+    const url = await getPresignedUrl(key);
+    if (url) {
+      setPreviewUrl(url);
+      setPreviewKey(key);
+    } else {
+      setError('Failed to load image preview');
+    }
+  };
+
+  // Fetch presigned URLs for all images when images list changes
+  useEffect(() => {
+    const fetchPresignedUrls = async () => {
+      if (images.length === 0) return;
+
+      // Get current cached URLs to check what we need to fetch
+      setImageUrls((currentUrls) => {
+        const keysToFetch = images
+          .filter((img) => !currentUrls[img.key])
+          .map((img) => img.key);
+
+        if (keysToFetch.length === 0) return currentUrls;
+
+        // Fetch multiple presigned URLs at once
+        apiRequest<{
+          success: boolean;
+          urls: Array<{ key: string; url: string }>;
+        }>('/api/admin/images/presigned-url', {
+          method: 'POST',
+          body: { keys: keysToFetch },
+          withAuth: true,
+        })
+          .then((response) => {
+            if (response.urls) {
+              const newUrls: Record<string, string> = {};
+              response.urls.forEach((item) => {
+                newUrls[item.key] = item.url;
+              });
+              setImageUrls((prev) => ({ ...prev, ...newUrls }));
+            }
+          })
+          .catch((err: any) => {
+            console.error('Failed to fetch presigned URLs:', err);
+          });
+
+        return currentUrls;
+      });
+    };
+
+    fetchPresignedUrls();
+  }, [images]);
+
+  // Handle file input change - only store the file, don't upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleFileUpload(file);
+      // Validate file type
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type as any)) {
+        setError(`Invalid file type. Allowed: ${ALLOWED_IMAGE_TYPES.join(', ')}`);
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      // Validate file size
+      if (file.size > MAX_IMAGE_FILE_SIZE) {
+        setError('File size exceeds 10MB limit');
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      setError(null);
+      setSelectedFile(file);
+    }
+  };
+
+  // Handle upload button click
+  const handleUploadClick = async () => {
+    if (selectedFile) {
+      await handleFileUpload(selectedFile);
+      setSelectedFile(null);
     }
   };
 
@@ -171,7 +322,7 @@ export default function AdminImagesPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              accept={ALLOWED_IMAGE_TYPES.join(',')}
               onChange={handleFileChange}
               disabled={uploading}
               className="hidden"
@@ -179,7 +330,7 @@ export default function AdminImagesPage() {
             />
             <label
               htmlFor="image-upload"
-              className="cursor-pointer inline-block"
+              className="cursor-pointer inline-block mb-4"
             >
               <div className="flex flex-col items-center">
                 <svg
@@ -196,20 +347,81 @@ export default function AdminImagesPage() {
                   />
                 </svg>
                 <span className="text-gray-600 mb-2">
-                  {uploading ? 'Uploading...' : 'Click to upload image'}
+                  Click to select image
                 </span>
                 <span className="text-sm text-gray-400">
                   PNG, JPG, GIF, WEBP up to 10MB
                 </span>
               </div>
             </label>
+
+            {/* Selected file info and upload button */}
+            {selectedFile && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1 text-left">
+                    <p className="text-sm font-medium text-gray-700">
+                      Selected: {selectedFile.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedFile(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = '';
+                      }
+                    }}
+                    className="ml-2 text-gray-400 hover:text-gray-600"
+                    disabled={uploading}
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <Button
+                  onClick={handleUploadClick}
+                  disabled={uploading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {uploading ? 'Uploading...' : 'Upload Image'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Images Grid */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Uploaded Images</h2>
-          {images.length === 0 ? (
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Uploaded Images</h2>
+            <button
+              onClick={fetchImages}
+              disabled={loading}
+              className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="text-gray-500 mt-2">Loading images...</p>
+            </div>
+          ) : images.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <p>No images uploaded yet.</p>
               <p className="text-sm mt-2">Upload your first image using the upload area above.</p>
@@ -222,10 +434,10 @@ export default function AdminImagesPage() {
                   className="relative group bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition"
                 >
                   <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                    {image.url ? (
+                    {imageUrls[image.key] ? (
                       <img
-                        src={image.url}
-                        alt={image.key}
+                        src={imageUrls[image.key]}
+                        alt={image.fileName || image.key}
                         className="w-full h-full object-cover"
                       />
                     ) : (

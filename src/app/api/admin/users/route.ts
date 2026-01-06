@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-middleware';
 import Users from '@/lib/aws/users';
+import { ADMIN_ROLES } from '@/lib/constants/roles';
 
 async function checkAdminAccess(req: NextRequest) {
   const auth = await requireAuth(req);
@@ -13,7 +14,7 @@ async function checkAdminAccess(req: NextRequest) {
 
   const requesterRecord = await Users.findByEmail(requesterEmail);
   const role = requesterRecord?.role;
-  if (!requesterRecord || !['admin', 'super-admin'].includes(role)) {
+  if (!requesterRecord || !ADMIN_ROLES.includes(role as any)) {
     return NextResponse.json({ error: 'Forbidden - admin or super-admin required' }, { status: 403 });
   }
 

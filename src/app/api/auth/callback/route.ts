@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ldapAuth } from '@/lib/ldap-auth';
 import { config } from '@/lib/config';
 import Users from '@/lib/aws/users';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * OAuth callback handler (server API route)
@@ -11,9 +12,9 @@ import Users from '@/lib/aws/users';
  * - Exchange the code for tokens using ldapAuth.exchangeCodeForToken (server-side PKCE verifier is read
  *   from a cookie `pkce_code_verifier`).
  * - Verify the ID token and build a minimal user object from verified claims.
- * - Persist or lookup the user in DynamoDB (via `Users` helper). If not found in DB, call Botpress
- *   `/users/get-or-create` first to obtain the canonical Botpress user key, then create the DB record
- *   using that key. If Botpress is unavailable or the request fails, fall back to a default static key.
+ * - Persist or lookup the user in DynamoDB (via `Users` helper). If not found in DB, create Botpress
+ *   user using `POST /users` with UUID, then create the DB record using the Botpress response.
+ *   If Botpress is unavailable or the request fails, fall back to a default static key.
  * - Set cookies for the client:
  *     - `auth_token` (HttpOnly) : the ID token for server-side checks (short-lived)
  *     - `user_data` (readable) : JSON representation of the user for client-side UI
@@ -22,7 +23,8 @@ import Users from '@/lib/aws/users';
  *
  * Important env variables used:
  * - BOTPRESS_API_USER_KEY (preferred) | BOTPRESS_SERVICE_KEY | BOTPRESS_TOKEN : service key used for calling
- *   Botpress `/users/get-or-create` on the server.
+ *   Botpress `/users` on the server.
+ * - DEFAULT_BOTPRESS_KEY: fallback key when Botpress API fails
  * - USERS_TABLE, USERS_TABLE_PK, etc. are used by the Users helper to persist records.
  *
  * Notes:
@@ -31,9 +33,12 @@ import Users from '@/lib/aws/users';
  *   Botpress or using a default key so the login flow is not blocked.
  */
 const BOTPRESS_BASE_URL = process.env.BOTPRESS_BASE_URL || 'https://chat.botpress.cloud/6e333992-4bc2-452f-9089-990386321bf5';
+const DEFAULT_BOTPRESS_KEY = process.env.DEFAULT_BOTPRESS_KEY || process.env.BOTPRESS_API_USER_KEY;
 
 
 export async function GET(req: NextRequest) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://banhmi.vietjetthai.com';
+
   try {
     // Parse redirect URL and extract OIDC parameters: authorization code and optional error
     const { searchParams } = new URL(req.url);
@@ -41,11 +46,11 @@ export async function GET(req: NextRequest) {
     const error = searchParams.get('error');
 
     if (error) {
-      return NextResponse.redirect(new URL('/login?error=oauth_error', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
+      return NextResponse.redirect(new URL(`/login?error=oauth_error&message=${encodeURIComponent('OAuth authorization error occurred')}`, baseUrl));
     }
 
     if (!code) {
-      return NextResponse.redirect(new URL('/login?error=no_code', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
+      return NextResponse.redirect(new URL(`/login?error=no_code&message=${encodeURIComponent('No authorization code received')}`, baseUrl));
     }
 
     // PKCE: read the code_verifier stored in a short-lived cookie during the initial authorization request
@@ -58,10 +63,10 @@ export async function GET(req: NextRequest) {
       const result = await ldapAuth.exchangeCodeForToken(code, codeVerifier || undefined);
 
       if (!result) {
-        return NextResponse.redirect(new URL('/login?error=auth_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
+        return NextResponse.redirect(new URL(`/login?error=auth_failed&message=${encodeURIComponent('Failed to exchange authorization code for tokens')}`, baseUrl));
       }
 
-      const res = NextResponse.redirect(new URL('/botChat', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
+      const res = NextResponse.redirect(new URL('/botChat', baseUrl));
 
 
       res.cookies.set('auth_token', result.token, {
@@ -75,12 +80,13 @@ export async function GET(req: NextRequest) {
       // Resolve Botpress user key then persist user to DynamoDB.
       // Flow:
       // 1. Try to find existing user in Dynamo by email.
-      // 2. If not found, call Botpress `/users/get-or-create` using a server-side API key
-      //    (BOTPRESS_API_USER_KEY preferred). Use the returned Botpress key as the user's key.
-      // 3. Persist the user record with the Botpress key so future logins can find it locally.
+      // 2. If not found, generate UUID and call Botpress `POST /users` to create a new user.
+      //    Use the Botpress response to create the user in DynamoDB.
+      // 3. If Botpress API fails, fallback to DEFAULT_BOTPRESS_KEY.
+      // 4. If all fails, redirect to login with error message.
       let dbUser: any = null;
       let xUserKey: string | undefined = undefined;
-      const serviceKey = process.env.BOTPRESS_API_USER_KEY;
+      const serviceKey = process.env.BOTPRESS_API_USER_KEY || DEFAULT_BOTPRESS_KEY;
 
       try {
         // If the ID token includes an email, try the (fast) GSI query to locate the user in DynamoDB
@@ -91,76 +97,84 @@ export async function GET(req: NextRequest) {
         if (dbUser) {
           xUserKey = dbUser.key || serviceKey;
         } else {
+          // User not found in DynamoDB, create new user in Botpress first
+          const userId = result.user?.sub || result.user?.email;
+          if (!userId) {
+            throw new Error('No user identifier (sub or email) available');
+          }
 
+          let botpressUser: any = null;
+          let botpressKey: string | undefined = undefined;
+          let botpressUserId: string | undefined = undefined;
+
+          // Try to create user in Botpress using POST /users
           if (serviceKey) {
-            // Call Botpress server API to create or fetch a user. The Botpress endpoint expects
-            // an 'x-user-key' header and a body with name/pictureUrl/profile fields.
-            const bpResp = await fetch(`${BOTPRESS_BASE_URL}/users/get-or-create`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-user-key': serviceKey
-              },
-              body: JSON.stringify({
-                name: result.user?.displayName || result.user?.email,
-                pictureUrl: '',
-                profile: JSON.stringify({ sub: result.user?.sub, email: result.user?.email, title: result.user?.title, department: result.user?.department })
-              })
-            });
+            try {
+              botpressUserId = uuidv4();
+              const bpResp = await fetch(`${BOTPRESS_BASE_URL}/users`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-user-key': serviceKey
+                },
+                body: JSON.stringify({
+                  id: botpressUserId,
+                  name: result.user?.displayName || result.user?.email,
+                  pictureUrl: '',
+                  profile: JSON.stringify({
+                    sub: result.user?.sub,
+                    email: result.user?.email,
+                    title: result.user?.title,
+                    department: result.user?.department
+                  })
+                })
+              });
 
-            if (!!bpResp?.ok) {
-              const bpData = await bpResp.json();
-              const remoteKey = bpData?.key || process.env.BOTPRESS_API_USER_KEY;
-              // Persist the user into DynamoDB using the Botpress-provided key (or configured fallback).
-              const created = await Users.create({
-                user_id: bpData.user?.id || result.user?.email,
-                givenName: result.user?.givenName,
-                company: result.user?.company,
-                email: result.user?.email,
-                displayName: result.user?.displayName,
-                sub: result.user?.sub,
-                key: remoteKey || process.env.BOTPRESS_API_USER_KEY,
-                botpressResponse: bpData,
-                createdAt: new Date().toISOString()
-              });
-              dbUser = created;
-              xUserKey = remoteKey || process.env.BOTPRESS_API_USER_KEY;
-            } else {
-              const txt = await bpResp.text().catch(() => '');
-              // Botpress returned an HTTP error; save the response body for debugging and
-              // persist a DB entry using the configured fallback key so login can continue.
-              const created = await Users.create({
-                user_id: result.user?.email,
-                givenName: result.user?.givenName,
-                company: result.user?.company,
-                email: result.user?.email,
-                displayName: result.user?.displayName,
-                sub: result.user?.sub,
-                key: process.env.BOTPRESS_API_USER_KEY,
-                botpressError: `status:${bpResp.status} body:${txt}`,
-                createdAt: new Date().toISOString()
-              });
-              dbUser = created;
-              xUserKey = process.env.BOTPRESS_API_USER_KEY;
+              if (bpResp?.ok) {
+                botpressUser = await bpResp.json();
+                botpressKey = botpressUser?.key || botpressUser?.user?.key || serviceKey;
+              } else {
+                const txt = await bpResp.text().catch(() => '');
+                console.warn(`[api/callback] Botpress user creation failed: status ${bpResp.status}, body: ${txt}`);
+                // Fallback to DEFAULT_BOTPRESS_KEY
+                botpressKey = DEFAULT_BOTPRESS_KEY;
+              }
+            } catch (bpErr) {
+              console.error('[api/callback] Botpress API error:', bpErr);
+              // Fallback to DEFAULT_BOTPRESS_KEY
+              botpressKey = DEFAULT_BOTPRESS_KEY;
             }
           } else {
-            // No service key configured: create a local DB user using the configured fallback key
+            // No service key, use fallback
+            botpressKey = DEFAULT_BOTPRESS_KEY;
+          }
+
+          // Create user in DynamoDB using Botpress response or fallback
+          try {
             const created = await Users.create({
-              user_id: result.user?.email,
+              id: userId,
+              user_id: botpressUser?.user?.id || botpressUserId || userId,
               givenName: result.user?.givenName,
               company: result.user?.company,
               email: result.user?.email,
               displayName: result.user?.displayName,
               sub: result.user?.sub,
-              key: process.env.BOTPRESS_API_USER_KEY,
+              key: botpressKey || DEFAULT_BOTPRESS_KEY,
+              botpressResponse: botpressUser,
               createdAt: new Date().toISOString()
             });
             dbUser = created;
-            xUserKey = process.env.BOTPRESS_API_USER_KEY;
+            xUserKey = botpressKey || DEFAULT_BOTPRESS_KEY;
+          } catch (dbErr) {
+            console.error('[api/callback] DynamoDB user creation error:', dbErr);
+            // If DynamoDB fails but we have a key, continue with that key
+            xUserKey = botpressKey || DEFAULT_BOTPRESS_KEY;
           }
         }
-      } catch (dbErr) {
-        console.warn('[api/callback] user lookup/create error', dbErr);
+      } catch (err) {
+        console.error('[api/callback] User creation flow error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to create user';
+        return NextResponse.redirect(new URL(`/login?error=user_creation_failed&message=${encodeURIComponent(errorMessage)}`, baseUrl));
       }
 
       // Set a readable `user_data` cookie for client-side UI and convenience. This cookie is
@@ -175,7 +189,7 @@ export async function GET(req: NextRequest) {
       });
 
       // Set the `x-user-key` cookie (readable) so client-side Botpress calls include the correct key.
-      const finalUserKey = xUserKey || dbUser?.key || process.env.BOTPRESS_API_USER_KEY;
+      const finalUserKey = xUserKey || dbUser?.key || DEFAULT_BOTPRESS_KEY;
       res.cookies.set('x-user-key', finalUserKey, {
         httpOnly: false,
         path: '/',
@@ -190,10 +204,12 @@ export async function GET(req: NextRequest) {
       return res;
     } catch (err) {
       console.error('Token exchange error:', err);
-      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
+      const errorMessage = err instanceof Error ? err.message : 'Failed to exchange authorization code';
+      return NextResponse.redirect(new URL(`/login?error=token_exchange_failed&message=${encodeURIComponent(errorMessage)}`, baseUrl));
     }
   } catch (err) {
     console.error('Callback error:', err);
-    return NextResponse.redirect(new URL('/login?error=callback_error', process.env.NEXT_PUBLIC_APP_URL || 'https://wiki.vietjetthai.com'));
+    const errorMessage = err instanceof Error ? err.message : 'Callback processing failed';
+    return NextResponse.redirect(new URL(`/login?error=callback_error&message=${encodeURIComponent(errorMessage)}`, baseUrl));
   }
 }

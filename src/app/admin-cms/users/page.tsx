@@ -3,6 +3,7 @@ import { ldapAuth } from '@/lib/ldap-auth';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import AdminUsersClient from './AdminUsersClient';
+import { ADMIN_ROLES } from '@/lib/constants/roles';
 
 export default async function AdminUsersPage() {
   // Server-side auth: read token from cookies or headers
@@ -20,7 +21,7 @@ export default async function AdminUsersPage() {
 
     // Ensure requester is admin in Dynamo
     const requesterRecord = await Users.findByEmail(user.email || '');
-    if (!requesterRecord || !['admin', 'super-admin'].includes(requesterRecord.role)) {
+    if (!requesterRecord || !ADMIN_ROLES.includes(requesterRecord.role as any)) {
       // Render access denied server-side
       return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">

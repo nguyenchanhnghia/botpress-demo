@@ -545,9 +545,8 @@ export const botpressAPI = {
           }
         }
       } catch (error) {
-        if ((error as any)?.name === 'AbortError') {
-          // Expected when controller.abort() is called
-        } else {
+        // AbortError is expected when controller.abort() is called - silently ignore it
+        if ((error as any)?.name !== 'AbortError') {
           console.error('SSE stream error:', error);
         }
       } finally {
@@ -570,15 +569,26 @@ export const botpressAPI = {
     return {
       close: () => {
         if (closed) return;
+        closed = true;
         try {
           controller.abort();
-        } catch {
-          // ignore
+        } catch (err) {
+          // AbortError is expected when aborting - ignore it
+          if ((err as any)?.name !== 'AbortError') {
+            console.debug('Error aborting controller:', err);
+          }
         }
         try {
-          if (reader) reader.cancel();
-        } catch {
-          // ignore
+          if (reader) {
+            reader.cancel().catch(() => {
+              // Ignore cancel errors - they're expected
+            });
+          }
+        } catch (err) {
+          // Ignore any errors during cancel
+          if ((err as any)?.name !== 'AbortError') {
+            console.debug('Error cancelling reader:', err);
+          }
         }
       },
       onmessage: null,

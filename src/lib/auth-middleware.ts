@@ -7,6 +7,7 @@ export interface AuthenticatedUser {
     department?: string;
     title?: string;
     displayName?: string;
+    givenName?: string;
 }
 
 export async function requireAuth(req: NextRequest): Promise<AuthenticatedUser | NextResponse> {
@@ -69,7 +70,8 @@ export async function optionalAuth(req: NextRequest): Promise<AuthenticatedUser 
             email: user.email,
             department: user.department,
             title: user.title,
-            displayName: user.displayName
+            displayName: user.displayName,
+            givenName: user.givenName,
         };
     } catch (error) {
         console.error('Optional auth error:', error);

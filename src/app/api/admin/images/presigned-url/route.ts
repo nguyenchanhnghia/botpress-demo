@@ -1,20 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-middleware';
 import { getPresignedUrl, getPresignedUrls } from '@/lib/aws/s3';
+import Users from '@/lib/aws/users';
+import { ADMIN_ROLES } from '@/lib/constants/roles';
+import { PRESIGNED_URL_EXPIRES_IN } from '@/lib/constants/common';
+
+async function checkAdminAccess(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth instanceof NextResponse) return auth; // unauthorized/err
+
+  const requesterEmail = (auth as any).email;
+  if (!requesterEmail) {
+    return NextResponse.json({ error: 'Forbidden - missing email' }, { status: 403 });
+  }
+
+  const requesterRecord = await Users.findByEmail(requesterEmail);
+  const role = requesterRecord?.role;
+  if (!requesterRecord || !ADMIN_ROLES.includes(role as any)) {
+    return NextResponse.json({ error: 'Forbidden - admin or super-admin required' }, { status: 403 });
+  }
+
+  return null; // Admin or super-admin access granted
+}
 
 /**
  * GET /api/admin/images/presigned-url?key=image-key
- * or POST with body: { key: string } or { keys: string[] }
+ * Presigned URLs expire in 15 minutes (900 seconds)
  */
 export async function GET(req: NextRequest) {
-  const auth = await requireAuth(req);
-
-  if (auth instanceof NextResponse) return auth; // unauthorized/err
+  const adminCheck = await checkAdminAccess(req);
+  if (adminCheck) return adminCheck;
 
   try {
     const { searchParams } = new URL(req.url);
     const key = searchParams.get('key');
-    const expiresIn = parseInt(searchParams.get('expiresIn') || '3600', 10);
+    const expiresIn = PRESIGNED_URL_EXPIRES_IN;
 
     if (!key) {
       return NextResponse.json({ error: 'Key parameter is required' }, { status: 400 });
@@ -37,14 +57,19 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * POST /api/admin/images/presigned-url
+ * Body: { key: string } or { keys: string[] }
+ * Presigned URLs expire in 15 minutes (900 seconds)
+ */
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req);
-
-  if (auth instanceof NextResponse) return auth; // unauthorized/err
+  const adminCheck = await checkAdminAccess(req);
+  if (adminCheck) return adminCheck;
 
   try {
     const body = await req.json();
-    const { key, keys, expiresIn = 3600 } = body;
+    const { key, keys } = body;
+    const expiresIn = PRESIGNED_URL_EXPIRES_IN;
 
     if (keys && Array.isArray(keys)) {
       // Multiple keys

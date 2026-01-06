@@ -139,7 +139,7 @@ export default function AdminCMSPage() {
             <div className="min-w-0">
               <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-red-600 to-yellow-600 bg-clip-text text-transparent truncate">
                 TVJ Internal Assistant
-              </h1>
+          </h1>
               <p className="text-[11px] sm:text-xs text-gray-500">
                 Admin CMS · Knowledge Base
               </p>
@@ -166,77 +166,77 @@ export default function AdminCMSPage() {
             <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               Knowledge Base Files
             </h2>
-          </div>
+        </div>
 
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading files...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center p-4 bg-red-100/50 backdrop-blur-sm rounded-xl border border-red-200/50">
-              <p className="text-red-600">{error}</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full max-w-full text-left border-separate border-spacing-y-2">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-gray-600 bg-white/50">
-                    <th className="py-3 px-4 break-words whitespace-normal">No</th>
-                    <th className="py-3 px-4 break-words whitespace-normal">File Name</th>
-                    <th className="py-3 px-4 min-w-[12rem] break-words whitespace-normal">Role</th>
-                    <th className="py-3 px-4 break-words whitespace-normal">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {files.map((file, index) => {
-                    const selectedRoles = selectedRolesMap[file.id] || [];
-                    const roles = file.tags.roles ? JSON.parse(file.tags.roles) : [];
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading files...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center p-4 bg-red-100/50 backdrop-blur-sm rounded-xl border border-red-200/50">
+            <p className="text-red-600">{error}</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full max-w-full text-left border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-gray-600 bg-white/50">
+                  <th className="py-3 px-4 break-words whitespace-normal">No</th>
+                  <th className="py-3 px-4 break-words whitespace-normal">File Name</th>
+                  <th className="py-3 px-4 min-w-[12rem] break-words whitespace-normal">Role</th>
+                  <th className="py-3 px-4 break-words whitespace-normal">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map((file, index) => {
+                  const selectedRoles = selectedRolesMap[file.id] || [];
+                  const roles = file.tags.roles ? JSON.parse(file.tags.roles) : [];
                     const rolesChanged =
                       JSON.stringify(selectedRoles?.sort()) !==
                       JSON.stringify(roles?.sort() ?? []);
 
-                    return (
-                      <tr
-                        key={file.id}
-                        className="bg-white/70 rounded-lg shadow-sm transition hover:bg-white"
-                      >
+                  return (
+                    <tr
+                      key={file.id}
+                      className="bg-white/70 rounded-lg shadow-sm transition hover:bg-white"
+                    >
                         <td className="py-3 px-4 font-mono text-sm text-gray-800 break-words whitespace-normal">
                           {index + 1}
                         </td>
                         <td className="py-3 px-4 font-mono text-sm text-gray-800 break-words whitespace-normal">
                           {file.key}
                         </td>
-                        <td className="py-3 px-4 min-w-[12rem] break-words whitespace-normal">
-                          <MultiSelect
-                            options={ROLES}
-                            value={selectedRoles}
+                      <td className="py-3 px-4 min-w-[12rem] break-words whitespace-normal">
+                        <MultiSelect
+                          options={ROLES}
+                          value={selectedRoles}
                             onChange={(v) => {
                               setSelectedRolesMap((prev) => ({ ...prev, [file.id]: v }));
                             }}
+                          disabled={updating === file.id}
+                        />
+                      </td>
+                      <td className="py-3 px-4 break-words whitespace-normal">
+                        {rolesChanged ? (
+                          <Button
+                            onClick={() => handleRoleUpdate(file)}
                             disabled={updating === file.id}
-                          />
-                        </td>
-                        <td className="py-3 px-4 break-words whitespace-normal">
-                          {rolesChanged ? (
-                            <Button
-                              onClick={() => handleRoleUpdate(file)}
-                              disabled={updating === file.id}
-                              className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1 rounded-md shadow transition"
-                            >
-                              {updating === file.id ? "Saving..." : "Update"}
-                            </Button>
-                          ) : (
-                            <span className="text-green-500 text-sm">✓</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1 rounded-md shadow transition"
+                          >
+                            {updating === file.id ? "Saving..." : "Update"}
+                          </Button>
+                        ) : (
+                          <span className="text-green-500 text-sm">✓</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
         </div>
       </div>
     </div>

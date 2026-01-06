@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * Lightweight token expiration check (doesn't verify signature, just checks exp claim)
+ */
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    const now = Math.floor(Date.now() / 1000);
+    return payload.exp ? payload.exp < now : true;
+  } catch {
+    return true;
+  }
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -14,13 +27,13 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value;
   console.log(`🍪 Middleware: Token exists: ${!!token}`);
 
-  // Simple logic: If no token, redirect to login (except for login page)
-  if (!token) {
+  // Check if token exists and is not expired
+  if (!token || isTokenExpired(token)) {
     if (pathname === '/login') {
       console.log(`✅ Middleware: Allowing access to login page`);
       return NextResponse.next();
     }
-    console.log(`🔄 Middleware: No token - redirecting to login`);
+    console.log(`🔄 Middleware: No valid token - redirecting to login`);
     return NextResponse.redirect(new URL('/login', request.url));
   }
 

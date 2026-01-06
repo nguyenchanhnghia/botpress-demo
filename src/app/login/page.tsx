@@ -38,6 +38,14 @@ function LoginContent() {
     }
     const e = params.get('error');
     if (!e) return;
+
+    // Check if there's a custom error message in the query params
+    const errorMessage = params.get('message');
+    if (errorMessage) {
+      setError(decodeURIComponent(errorMessage));
+      return;
+    }
+
     const map: Record<string, string> = {
       oauth_error: 'OAuth authentication failed.',
       no_code: 'No authorization code received.',
@@ -47,6 +55,7 @@ function LoginContent() {
       token_expired: 'Your session has expired. Please log in again.',
       no_token: 'No authentication token found. Please log in.',
       invalid_token: 'Invalid authentication token. Please log in again.',
+      user_creation_failed: 'Failed to create user account. Please try again or contact support.',
     };
     setError(map[e] ?? 'An unknown error occurred.');
   }, [params, router]);

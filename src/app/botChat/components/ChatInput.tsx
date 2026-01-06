@@ -1,111 +1,196 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, memo, useEffect } from "react";
 import Image from "next/image";
-import Typewriter from "@/components/common/TypeWriter";
+import { auth, botpressAPI } from "@/lib/auth";
 
 interface ChatInputProps {
-  /** Callback when user submits a message */
-  onSend: (message: string) => Promise<void> | void;
+  /** Conversation ID for sending messages */
+  conversationId: string | null;
 
-  /** True while backend is processing a message */
-  loading?: boolean;
+  /** Callback when message is sent successfully */
+  onMessageSent?: () => void;
+
+  /** Callback when error occurs */
+  onError?: (error: string) => void;
+
+  /** Callback to set bot typing state */
+  onBotTypingChange?: (typing: boolean) => void;
 
   /** True when conversation is not initialized yet */
   disabled?: boolean;
 
-  /** Optional custom hints rotating above input */
-  hints?: string[];
+  /** Optional custom placeholder text */
+  placeholder?: string;
 }
 
-/** Default rotating hints for the typewriter effect */
-const DEFAULT_HINTS = [
-  "Ask me anything about VietJet policies ✈️",
+/** Default rotating placeholder phrases */
+const DEFAULT_PLACEHOLDERS = [
+  "Ask Banh Mi about VietJet policies ✈️",
   "Need help with leave requests? 🌴",
-  "How can I assist you today, my colleague?",
+  "How can Banh Mi assist you today, my colleague?",
   "Ask HR, IT, COM or SOP-related questions",
 ];
 
-export function ChatInput({
-  onSend,
-  loading = false,
+export const ChatInput = memo(function ChatInput({
+  conversationId,
+  onMessageSent,
+  onError,
+  onBotTypingChange,
   disabled = false,
-  hints = DEFAULT_HINTS,
+  placeholder,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [placeholderText, setPlaceholderText] = useState("");
+  const [showCursor, setShowCursor] = useState(true);
+
+  // Typing effect for placeholder
+  useEffect(() => {
+    let charIndex = 0;
+    let timeout: NodeJS.Timeout | null = null;
+    let isDeleting = false;
+
+    const type = () => {
+      const currentPhrase = placeholder || DEFAULT_PLACEHOLDERS[placeholderIndex];
+      const fullText = currentPhrase;
+
+      if (!isDeleting) {
+        setPlaceholderText(fullText.substring(0, charIndex + 1));
+        charIndex++;
+
+        if (charIndex === fullText.length) {
+          isDeleting = true;
+          timeout = setTimeout(type, 2500);
+          return;
+        }
+      } else {
+        setPlaceholderText(fullText.substring(0, charIndex - 1));
+        charIndex--;
+
+        if (charIndex === 0) {
+          isDeleting = false;
+          setPlaceholderIndex(
+            (prev) => (prev + 1) % DEFAULT_PLACEHOLDERS.length
+          );
+          timeout = setTimeout(type, 800);
+          return;
+        }
+      }
+
+      const speed = isDeleting ? 50 : 90;
+      timeout = setTimeout(type, speed);
+    };
+
+    timeout = setTimeout(type, 500);
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [placeholderIndex, placeholder]);
+
+  // Blink cursor for placeholder
+  useEffect(() => {
+    const id = setInterval(() => {
+      setShowCursor((prev) => !prev);
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
 
   /** Handle form submit */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
 
-    const trimmed = value.trim();
-    if (!trimmed || loading || disabled) return;
+      const trimmed = value.trim();
+      if (!trimmed || loading || disabled || !conversationId) return;
 
-    await onSend(trimmed);
-    setValue(""); // Clear input after sending
-  };
+      // Check authentication
+      if (!auth.isAuthenticated()) {
+        const errorMsg = "User key not found. Please login again.";
+        onError?.(errorMsg);
+        return;
+      }
+
+      const userKey = auth.getUserKey();
+      if (!userKey) {
+        const errorMsg = "User key not found. Please login again.";
+        onError?.(errorMsg);
+        return;
+      }
+
+      setLoading(true);
+      const messageToSend = trimmed;
+      setValue(""); // Clear input immediately
+
+      try {
+        // Send message
+        await botpressAPI.sendMessage(userKey, conversationId, messageToSend);
+        // Set bot typing state
+        onBotTypingChange?.(true);
+        // Notify parent that message was sent
+        onMessageSent?.();
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Failed to send message";
+        onError?.(errorMsg);
+        // Restore input value on error
+        setValue(messageToSend);
+        onBotTypingChange?.(false);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      value,
+      loading,
+      disabled,
+      conversationId,
+      onMessageSent,
+      onError,
+      onBotTypingChange,
+    ]
+  );
 
   return (
     <div className="relative bg-white/70 backdrop-blur-xl border-t border-white/20 p-4">
       <form
         onSubmit={handleSubmit}
-        className="max-w-4xl mx-auto flex flex-col gap-2"
+        className="max-w-4xl mx-auto flex items-center space-x-3"
       >
-        {/* === Rotating hint using Typewriter component === */}
-        <div className="h-4 text-[11px] text-gray-500 flex items-center gap-1 font-mono">
-          {/* Small glowing dot */}
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-
-          {/* Typewriter animated text */}
-          <Typewriter
-            texts={hints}
-            typingSpeed={70}
-            deletingSpeed={35}
-            pauseTime={1000}
-          >
-            {(text: string) => <span>{text}</span>}
-          </Typewriter>
-        </div>
-
-        {/* === Main input + send button === */}
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            className="flex-1 px-4 py-3 bg-white/50 backdrop-blur-sm border border-gray-200/50
-              rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 
-              focus:border-transparent transition-all duration-500 text-gray-900 
-              placeholder-gray-400 italic text-base tracking-wide"
-            placeholder="Type your question for JettyKa..."
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            disabled={loading || disabled}
-          />
-
-          {/* Send button */}
-          <button
-            type="submit"
-            disabled={loading || !value.trim() || disabled}
-            className="px-6 py-3 bg-gradient-to-r from-red-400 to-yellow-400 text-white rounded-xl
-              hover:from-red-600 hover:to-yellow-400 transition-all duration-200 transform
-              hover:scale-105 font-semibold shadow-lg flex items-center justify-center
-              disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              /* Loading spinner */
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-            ) : (
-              /* Telegram-style send icon */
-              <Image
-                src="/send-icon.svg"
-                alt="Send"
-                width={20}
-                height={20}
-                className="dark:invert"
-              />
-            )}
-          </button>
-        </div>
+        <input
+          type="text"
+          className="flex-1 px-4 py-3 bg-white/50 backdrop-blur-sm border border-gray-200/50 
+            rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 
+            focus:border-transparent transition-all duration-500 text-gray-900 
+            placeholder-gray-400 italic text-base tracking-wide"
+          placeholder={`${placeholderText}${showCursor ? " |" : " "}`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={loading || disabled || !conversationId}
+        />
+        <button
+          type="submit"
+          disabled={loading || !value.trim() || disabled || !conversationId}
+          className="px-6 py-3 bg-gradient-to-r from-red-400 to-yellow-400 text-white rounded-xl 
+            hover:from-red-600 hover:to-yellow-400 transition-all duration-200 transform 
+            hover:scale-105 font-semibold shadow-lg flex items-center justify-center 
+            disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+          ) : (
+            <Image
+              src="./send-icon.svg"
+              alt="Send"
+              width={20}
+              height={20}
+              className="dark:invert"
+            />
+          )}
+        </button>
       </form>
     </div>
   );
-}
+});

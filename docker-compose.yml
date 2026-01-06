@@ -1,11 +1,14 @@
 services:
   app:
+    profiles:
+      - app
+      - production
     build: .
     image: vz-wiki-frontend-local
     ports:
       - "3001:8080"
     env_file:
-      - .env.local
+      - .env.prod
     environment:
       AWS_PROFILE: mfa-session
       AWS_SDK_LOAD_CONFIG: "1"
@@ -13,6 +16,9 @@ services:
     volumes:
       - ~/.aws:/root/.aws:ro
   app-dev:
+    profiles:
+      - app-dev
+      - development
     image: node:18-alpine
     working_dir: /app
     # Mount your source into the container so changes are live
@@ -28,6 +34,6 @@ services:
       AWS_SDK_GOOD_CONFIG: "1"
     env_file:
       - ./.env.local
-    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3001"
+    command: sh -c "if [ ! -d node_modules ]; then npm install; fi && npm run dev -- --hostname 0.0.0.0 --port 3001"
     ports:
       - "3001:3001"
