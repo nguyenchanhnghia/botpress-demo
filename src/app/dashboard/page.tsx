@@ -20,6 +20,20 @@ export default function DashboardPage() {
     // Get user data
     const currentUser = auth.getCurrentUser();
     setUser(currentUser);
+    
+    // Console log user info
+    if (currentUser) {
+      console.log('[Dashboard] Current user info:', {
+        email: currentUser.email,
+        displayName: currentUser.displayName,
+        role: (currentUser as any).role,
+        department: currentUser.department,
+        title: currentUser.title,
+        company: currentUser.company,
+        fullUser: currentUser
+      });
+    }
+    
     setIsLoading(false);
 
     // Initialize token refresh monitoring
@@ -118,6 +132,16 @@ export default function DashboardPage() {
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Display Name</dt>
                   <dd className="mt-1 text-sm text-gray-900">{user.displayName}</dd>
+                </div>
+              )}
+              {(user as any).role && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Role</dt>
+                  <dd className="mt-1">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {(user as any).role.toUpperCase()}
+                    </span>
+                  </dd>
                 </div>
               )}
             </dl>

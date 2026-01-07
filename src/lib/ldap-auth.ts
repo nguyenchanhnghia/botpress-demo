@@ -10,6 +10,7 @@ export interface LDAPUser {
   displayName?: string;
   givenName?: string;
   company?: string;
+  role?: string; // User role from DynamoDB (e.g., 'admin', 'super-admin', 'ict', 'com', 'pd')
 }
 
 export interface AuthToken {
@@ -481,7 +482,7 @@ export const botpressAPI = {
   },
 
   // Listen for new messages (SSE)
-  listenMessages: async (userKey: string, conversationId: string, onMessage: (data: any) => void) => {
+  listenMessages: async (userKey: string, conversationId: string, onMessage: (data: any) => void, onError?: (error: Error) => void) => {
     // Use AbortController to allow cancelling the underlying fetch and socket
     const controller = new AbortController();
 
@@ -548,12 +549,20 @@ export const botpressAPI = {
         // AbortError is expected when controller.abort() is called - silently ignore it
         if ((error as any)?.name !== 'AbortError') {
           console.error('SSE stream error:', error);
+          // Notify about disconnection if not manually closed
+          if (!closed && onError) {
+            onError(error instanceof Error ? error : new Error('SSE stream disconnected'));
+          }
         }
       } finally {
         // Ensure reader is cancelled and mark closed
         try {
-          if (reader) {
+          if (reader && !closed) {
             await reader.cancel();
+            // If we reach here and closed is still false, it means the stream ended unexpectedly
+            if (!closed && onError) {
+              onError(new Error('SSE stream ended unexpectedly'));
+            }
           }
         } catch {
           // ignore

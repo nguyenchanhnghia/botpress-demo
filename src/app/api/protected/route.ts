@@ -11,11 +11,25 @@ export async function GET(req: NextRequest) {
 
   // Fetch user role from DynamoDB
   let role: string | undefined;
+  let userRecord: any = null;
   try {
     const userEmail = (user as any).email;
     if (userEmail) {
-      const userRecord = await Users.findByEmail(userEmail);
+      userRecord = await Users.findByEmail(userEmail);
       role = userRecord?.role;
+      
+      // Console log user info from DynamoDB
+      console.log('[api/protected] User info from DynamoDB:', {
+        id: userRecord?.id,
+        email: userRecord?.email,
+        displayName: userRecord?.displayName,
+        role: userRecord?.role,
+        department: userRecord?.department,
+        title: userRecord?.title,
+        company: userRecord?.company,
+        createdAt: userRecord?.createdAt,
+        fullRecord: userRecord
+      });
     }
   } catch (err) {
     console.error('Error fetching user role:', err);

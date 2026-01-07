@@ -36,6 +36,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 // or the redirect is in progress
                 setUser(userData);
 
+                // Console log user info from UserContext
+                if (userData) {
+                    console.log('[UserContext] User data loaded:', {
+                        email: userData.email,
+                        displayName: userData.displayName,
+                        role: userData.role,
+                        department: userData.department,
+                        title: userData.title,
+                        fullUser: userData
+                    });
+                }
+
                 // Clear user state if no user data (ensures UserContext is cleared)
                 if (!userData) {
                     setUser(null);

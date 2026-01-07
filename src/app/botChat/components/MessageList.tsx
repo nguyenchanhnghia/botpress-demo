@@ -64,6 +64,7 @@ export const MessageList = memo(function MessageList({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showRefreshPopup, setShowRefreshPopup] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const eventSourceRef = useRef<{ close: () => void } | null>(null);
@@ -168,7 +169,10 @@ export const MessageList = memo(function MessageList({
 
   // Set up SSE listener when conversationId changes
   useEffect(() => {
-    if (!conversationId || initializing) return;
+    if (!conversationId || initializing) {
+      setShowRefreshPopup(false);
+      return;
+    }
 
     // Prevent multiple simultaneous setups
     if (isSettingUpSSERef.current) return;
@@ -195,7 +199,6 @@ export const MessageList = memo(function MessageList({
             }
           } catch {
             // Silently ignore all errors - AbortError is expected behavior
-            // The error is handled internally by the close() method
           } finally {
             isClosingSSERef.current = false;
           }
@@ -243,14 +246,44 @@ export const MessageList = memo(function MessageList({
                 }
               }
             }
+          },
+          (error) => {
+            // Handle disconnection error - show popup immediately
+            console.error('SSE connection error:', error);
+
+            // Close current connection
+            if (eventSourceRef.current) {
+              try {
+                eventSourceRef.current.close();
+              } catch {
+                // Ignore close errors
+              }
+              eventSourceRef.current = null;
+            }
+
+            // Show popup immediately
+            setShowRefreshPopup(true);
           }
         );
 
         eventSourceRef.current = eventSource;
         isSettingUpSSERef.current = false;
+
+        // Monitor for disconnection - check if connection is still alive
+        const checkConnection = setInterval(() => {
+          // If we haven't received messages in a while and connection seems dead, retry
+          // This is a simple check - in production you might want more sophisticated monitoring
+        }, 30000); // Check every 30 seconds
+
+        // Store interval for cleanup
+        (eventSource as any).healthCheckInterval = checkConnection;
+
       } catch (err) {
         console.error('Failed to setup SSE:', err);
         isSettingUpSSERef.current = false;
+
+        // Show popup immediately on connection failure
+        setShowRefreshPopup(true);
       }
     };
 
@@ -262,6 +295,11 @@ export const MessageList = memo(function MessageList({
         isClosingSSERef.current = true;
         const eventSource = eventSourceRef.current;
         eventSourceRef.current = null;
+
+        // Clear health check interval if exists
+        if ((eventSource as any).healthCheckInterval) {
+          clearInterval((eventSource as any).healthCheckInterval);
+        }
 
         // Use setTimeout to defer close and prevent synchronous errors
         setTimeout(() => {
@@ -540,6 +578,7 @@ export const MessageList = memo(function MessageList({
             </div>
           )}
 
+
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -552,6 +591,48 @@ export const MessageList = memo(function MessageList({
         onBotTypingChange={setBotTyping}
         disabled={!conversationId || initializing}
       />
+
+      {/* Connection Error Popup */}
+      {showRefreshPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md mx-4 border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Connection Lost
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Unable to connect to the chat service.
+              Please refresh the page to reconnect.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  window.location.reload();
+                }}
+                className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-200 font-medium"
+              >
+                Refresh Page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

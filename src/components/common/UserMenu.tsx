@@ -45,12 +45,29 @@ export default function UserMenu({ items }: UserMenuProps) {
   const userRole = user?.role?.toLowerCase()?.trim();
   const isAdmin = userRole === 'admin' || userRole === 'super-admin';
 
+  // Get first letter of email or displayName for icon
+  const getUserInitial = (): string => {
+    if (!user) return 'U';
+    const name = user.displayName || user.email || '';
+    if (name.length > 0) {
+      return name.charAt(0).toUpperCase();
+    }
+    return 'U';
+  };
+
   // Debug logging (remove in production if needed)
   useEffect(() => {
-    if (!loading) {
-      // console.log('[UserMenu] User role:', userRole, 'isAdmin:', isAdmin, 'loading:', loading);
+    if (!loading && user) {
+      console.log('[UserMenu] Current user info:', {
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        userRole,
+        isAdmin,
+        fullUser: user
+      });
     }
-  }, [userRole, isAdmin, loading]);
+  }, [user, userRole, isAdmin, loading]);
 
   // Filter items: hide admin-only items unless user is confirmed admin/super-admin
   // While loading, hide admin items to prevent showing them to non-admin users
@@ -75,7 +92,7 @@ export default function UserMenu({ items }: UserMenuProps) {
         aria-haspopup="true"
         aria-expanded={open}
       >
-        <span className="text-sm font-semibold">U</span>
+        <span className="text-sm font-semibold">{getUserInitial()}</span>
       </button>
 
       {open && (

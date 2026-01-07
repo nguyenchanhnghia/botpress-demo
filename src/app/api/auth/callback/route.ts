@@ -96,6 +96,19 @@ export async function GET(req: NextRequest) {
 
         if (dbUser) {
           xUserKey = dbUser.key || serviceKey;
+          // Role is already in dbUser from DynamoDB
+          // Console log user info from DynamoDB
+          console.log('[api/callback] User info from DynamoDB:', {
+            id: dbUser.id,
+            email: dbUser.email,
+            displayName: dbUser.displayName,
+            role: dbUser.role,
+            department: dbUser.department,
+            title: dbUser.title,
+            company: dbUser.company,
+            createdAt: dbUser.createdAt,
+            fullRecord: dbUser
+          });
         } else {
           // User not found in DynamoDB, create new user in Botpress first
           const userId = result.user?.sub || result.user?.email;
@@ -179,7 +192,12 @@ export async function GET(req: NextRequest) {
 
       // Set a readable `user_data` cookie for client-side UI and convenience. This cookie is
       // intentionally not HttpOnly so frontend code can read user displayName/email for UI.
-      const userDataForCookie = { ...(result.user || {}), key: xUserKey };
+      // Include role from DynamoDB if available
+      const userDataForCookie = {
+        ...(result.user || {}),
+        key: xUserKey,
+        role: dbUser?.role // Add role from DynamoDB
+      };
       res.cookies.set('user_data', JSON.stringify(userDataForCookie), {
         httpOnly: false,
         path: '/',
