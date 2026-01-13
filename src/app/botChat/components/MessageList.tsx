@@ -148,7 +148,10 @@ export const MessageList = memo(function MessageList({
           const welcomePayload = JSON.stringify({
             msg: `My name is ${nameOrEmail}`,
             type: "start_conversation",
+            env: process.env.NEXT_PUBLIC_APP_ENV || process.env.APP_ENV || 'production',
           });
+
+          console.log("welcomePayload", welcomePayload);
 
           if (conversationId) {
             botpressAPI.sendMessage(userKey, conversationId, welcomePayload);
@@ -433,7 +436,7 @@ export const MessageList = memo(function MessageList({
           {messages.map((msg, index) => {
             const isCurrentUser =
               msg.sender === "user" && msg.userId === conversationUserId;
-            const isChoiceType = msg?.options && msg?.type === "choice";
+            const isChoiceType = msg?.options && (msg?.type === "choice" || msg?.type === "dropdown");
             const showOptions =
               msg?.options && Array.isArray(msg?.options) && msg?.options.length > 0;
 
@@ -487,12 +490,22 @@ export const MessageList = memo(function MessageList({
                           {msg.text}
                         </span>
                       )}
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <div className="mt-2 grid grid-cols-2 gap-2 items-stretch">
                         {(msg?.options ?? []).map((opt: any, i: number) => (
                           <button
                             key={opt.value || i}
                             type="button"
-                            className="px-4 py-1 bg-gradient-to-r from-blue-400 to-purple-400 text-white rounded-md hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                            className="w-full px-4 py-1.5 backdrop-blur-xl border border-white/20 text-gray-700 rounded-full shadow-lg shadow-black/5 hover:bg-gradient-to-r hover:from-blue-400/90 hover:to-purple-400/90 hover:text-white hover:border-white/50 hover:cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-lg disabled:hover:shadow-black/5 text-sm font-medium text-center"
+                            onMouseEnter={(e) => {
+                              if (!e.currentTarget.disabled) {
+                                e.currentTarget.style.backgroundColor = '';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!e.currentTarget.disabled) {
+                                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                              }
+                            }}
                             onClick={() => handleOptionSelect(opt.value)}
                             disabled={!!selectedOption}
                           >

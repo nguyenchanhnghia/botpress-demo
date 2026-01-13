@@ -19,7 +19,7 @@ services:
     profiles:
       - app-dev
       - development
-    image: node:18-alpine
+    image: node:20-alpine
     working_dir: /app
     # Mount your source into the container so changes are live
     volumes:
@@ -29,11 +29,35 @@ services:
       - ~/.aws:/root/.aws:ro
     environment:
       NODE_ENV: development
+      APP_ENV: development
       AWS_REGION: ap-southeast-1
       AWS_PROFILE: mfa-session
       AWS_SDK_GOOD_CONFIG: "1"
     env_file:
       - ./.env.local
     command: sh -c "if [ ! -d node_modules ]; then npm install; fi && npm run dev -- --hostname 0.0.0.0 --port 3001"
+    ports:
+      - "3001:3001"
+  app-uat:
+    profiles:
+      - app-uat
+      - uat
+    image: node:20-alpine
+    working_dir: /app
+    # Mount your source into the container so changes are live
+    volumes:
+      - .:/app
+      # keep node_modules inside container so host/ARM vs container binaries don't fight
+      - /app/node_modules
+      - ~/.aws:/root/.aws:ro
+    environment:
+      NODE_ENV: development
+      APP_ENV: uat
+      AWS_REGION: ap-southeast-1
+      AWS_PROFILE: mfa-session
+      AWS_SDK_GOOD_CONFIG: "1"
+    env_file:
+      - ./.env.local
+    command: sh -c "if [ ! -d node_modules ] || [ ! -f node_modules/.bin/next ]; then npm install; fi && npm run dev -- --hostname 0.0.0.0 --port 3001"
     ports:
       - "3001:3001"

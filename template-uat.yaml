@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Internal AI UAT (Next.js on Lambda + Function URL)
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: internal-ai-bot-uat
+    Description: Lambda function name (UAT)
+
+  EcrImageUri:
+    Type: String
+    Default: 345034663883.dkr.ecr.ap-southeast-1.amazonaws.com/vz/internal-ai:uat
+    Description: ECR image URI for UAT
+
+  DeployVersion:
+    Type: String
+    Default: manual-0
+    Description: Force Lambda redeploy
+
+  Memory:
+    Type: Number
+    Default: 1024
+
+  Timeout:
+    Type: Number
+    Default: 30
+
+  NextPublicUrl:
+    Type: String
+    Default: https://wiki.vietjetthai.com
+
+  # =========================
+  # Botpress (UAT)
+  # =========================
+  BotpressWebhookUrl:
+    Type: String
+    Default: https://webhook.botpress.cloud/6e333992-4b6f-452f-9089-990386321bf5
+
+  BotpressToken:
+    Type: String
+    NoEcho: true
+
+  BotpressClientId:
+    Type: String
+    Default: 629e90eb-4b6f-4767-977a-686a81eeb449
+
+  BotpressApiUrl:
+    Type: String
+    Default: https://api.botpress.cloud
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+
+  BotId:
+    Type: String
+    Default: 84b23382-8059-4173-a155-287893828551
+
+  BotPressAPIUserKey:
+    Type: String
+    NoEcho: true
+
+  # =========================
+  # LDAP (UAT)
+  # =========================
+  NextPublicLdapAuthUrl:
+    Type: String
+    Default: https://ldap-auth-uat.vietjetthai.com
+
+  NextPublicClientId:
+    Type: String
+    Default: vz-wiki-frontend
+
+  NextPublicRedirectUri:
+    Type: String
+    Default: https://wiki.vietjetthai.com/api/auth/callback
+
+  # =========================
+  # DynamoDB (UAT)
+  # =========================
+  UsersTableName:
+    Type: String
+    Default: vz-users-botpress-uat
+
+  UserEmailGSI:
+    Type: String
+    Default: gsi_email
+
+  FilesTableName:
+    Type: String
+    Default: vz-internal-ai-files-uat
+
+  # =========================
+  # S3 (UAT)
+  # =========================
+  AssetsBucketName:
+    Type: String
+    Default: vz-internal-ai-uat
+
+Resources:
+  # IAM Role
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: internal-ai-bot-role-uat
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDbAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt UsersTable.Arn
+                  - !Sub ${UsersTable.Arn}/index/${UserEmailGSI}
+                  - !GetAtt FilesTable.Arn
+                  - !Sub ${FilesTable.Arn}/index/gsi_bucket_key
+
+  # Lambda
+  AppFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      PackageType: Image
+      Code:
+        ImageUri: !Ref EcrImageUri
+      Role: !GetAtt LambdaRole.Arn
+      MemorySize: !Ref Memory
+      Timeout: !Ref Timeout
+      Architectures:
+        - x86_64
+      Description: !Sub DeployVersion=${DeployVersion}
+      Environment:
+        Variables:
+          APP_ENV: uat
+          NODE_ENV: production
+          NEXT_PUBLIC_APP_URL: !Ref NextPublicUrl
+          USERS_TABLE: !Ref UsersTableName
+          USERS_EMAIL_INDEX: !Ref UserEmailGSI
+          FILES_TABLE: !Ref FilesTableName
+
+  AppFnUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref AppFn
+      AuthType: NONE
+
+  AppFnUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AppFn
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  # DynamoDB Users (UAT)
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref UsersTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: gsi_email
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # DynamoDB Files (UAT)
+  FilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref FilesTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: file_id
+          AttributeType: S
+        - AttributeName: bucket_key
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: file_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: gsi_bucket_key
+          KeySchema:
+            - AttributeName: bucket_key
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # S3 Bucket (UAT)
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref AssetsBucketName
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  FunctionUrl:
+    Description: Public Lambda Function URL (UAT)
+    Value: !GetAtt AppFnUrl.FunctionUrl

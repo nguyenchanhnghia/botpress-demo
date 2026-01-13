@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, memo, useEffect } from "react";
+import { useState, useCallback, memo, useEffect, useRef } from "react";
 import Image from "next/image";
 import { auth, botpressAPI } from "@/lib/auth";
 
@@ -45,6 +45,7 @@ export const ChatInput = memo(function ChatInput({
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [placeholderText, setPlaceholderText] = useState("");
   const [showCursor, setShowCursor] = useState(true);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Typing effect for placeholder
   useEffect(() => {
@@ -131,6 +132,10 @@ export const ChatInput = memo(function ChatInput({
         onBotTypingChange?.(true);
         // Notify parent that message was sent
         onMessageSent?.();
+        // Keep focus on input after sending
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 0);
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : "Failed to send message";
@@ -160,11 +165,12 @@ export const ChatInput = memo(function ChatInput({
         className="max-w-4xl mx-auto flex items-center space-x-3"
       >
         <input
+          ref={inputRef}
           type="text"
           className="flex-1 px-4 py-3 bg-white/50 backdrop-blur-sm border border-gray-200/50 
             rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 
             focus:border-transparent transition-all duration-500 text-gray-900 
-            placeholder-gray-400 italic text-base tracking-wide"
+            placeholder-gray-400 placeholder:italic text-base tracking-wide not-italic"
           placeholder={`${placeholderText}${showCursor ? " |" : " "}`}
           value={value}
           onChange={(e) => setValue(e.target.value)}

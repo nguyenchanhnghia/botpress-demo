@@ -1,5 +1,5 @@
 # --- 1️⃣ Build stage ---
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ RUN npm run build
 FROM public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 AS lambda-adapter
 
 # --- 3️⃣ Runtime stage ---
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 # ✅ Copy the adapter from AWS public ECR (multi-arch ready)
