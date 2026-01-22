@@ -11,9 +11,7 @@ export type { LDAPUser as User } from './ldap-auth';
 export const authenticateUser = async (_username: string, _password: string): Promise<{ user: any; token: string } | null> => {
     // Redirect to LDAP login instead of direct authentication
     if (typeof window !== 'undefined') {
-        const { ldapAuth } = await import('./ldap-auth');
-        const url = await ldapAuth.getAuthorizationUrl();
-        window.location.href = url;
+        window.location.href = '/api/auth/login';
     }
     return null;
 };

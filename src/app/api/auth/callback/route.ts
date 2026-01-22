@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ldapAuth } from '@/lib/ldap-auth';
-import { config } from '@/lib/config';
+import { ldapAuth } from '@/lib/ldap-auth.server';
+import { serverRuntimeConfig } from '@/lib/runtime-config/server';
 import Users from '@/lib/aws/users';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -37,7 +37,8 @@ const DEFAULT_BOTPRESS_KEY = process.env.DEFAULT_BOTPRESS_KEY || process.env.BOT
 
 
 export async function GET(req: NextRequest) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://banhmi.vietjetthai.com';
+  const runtime = serverRuntimeConfig;
+  const baseUrl = runtime.appUrl;
 
   try {
     // Parse redirect URL and extract OIDC parameters: authorization code and optional error
@@ -73,8 +74,8 @@ export async function GET(req: NextRequest) {
         httpOnly: true,
         path: '/',
         sameSite: 'lax',
-        secure: config.cookieConfig.secure,
-        maxAge: 60 * 60 * 24 * config.cookieConfig.expires,
+        secure: runtime.cookieConfig.secure,
+        maxAge: 60 * 60 * 24 * runtime.cookieConfig.expiresDays,
       });
 
       // Resolve Botpress user key then persist user to DynamoDB.
@@ -98,6 +99,7 @@ export async function GET(req: NextRequest) {
           xUserKey = dbUser.key || serviceKey;
           // Role is already in dbUser from DynamoDB
           // Console log user info from DynamoDB
+          console.log('dbUser', dbUser);
           console.log('[api/callback] User info from DynamoDB:', {
             id: dbUser.id,
             email: dbUser.email,
@@ -174,7 +176,8 @@ export async function GET(req: NextRequest) {
               sub: result.user?.sub,
               key: botpressKey || DEFAULT_BOTPRESS_KEY,
               botpressResponse: botpressUser,
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              role: ''
             });
             dbUser = created;
             xUserKey = botpressKey || DEFAULT_BOTPRESS_KEY;
@@ -202,8 +205,8 @@ export async function GET(req: NextRequest) {
         httpOnly: false,
         path: '/',
         sameSite: 'lax',
-        secure: config.cookieConfig.secure,
-        maxAge: 60 * 60 * 24 * config.cookieConfig.expires,
+        secure: runtime.cookieConfig.secure,
+        maxAge: 60 * 60 * 24 * runtime.cookieConfig.expiresDays,
       });
 
       // Set the `x-user-key` cookie (readable) so client-side Botpress calls include the correct key.
@@ -212,8 +215,8 @@ export async function GET(req: NextRequest) {
         httpOnly: false,
         path: '/',
         sameSite: 'lax',
-        secure: config.cookieConfig.secure,
-        maxAge: 60 * 60 * 24 * config.cookieConfig.expires,
+        secure: runtime.cookieConfig.secure,
+        maxAge: 60 * 60 * 24 * runtime.cookieConfig.expiresDays,
       });
 
       // Clean up the short-lived PKCE cookie since it is no longer needed

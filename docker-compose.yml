@@ -56,8 +56,10 @@ services:
       AWS_REGION: ap-southeast-1
       AWS_PROFILE: mfa-session
       AWS_SDK_GOOD_CONFIG: "1"
+      # UAT should not default to prod bucket
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-vz-internal-ai-uat}
     env_file:
-      - ./.env.local
+      - ./.env.uat
     command: sh -c "if [ ! -d node_modules ] || [ ! -f node_modules/.bin/next ]; then npm install; fi && npm run dev -- --hostname 0.0.0.0 --port 3001"
     ports:
       - "3001:3001"

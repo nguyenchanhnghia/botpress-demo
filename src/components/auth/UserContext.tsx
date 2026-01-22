@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { checkAuthStatus } from '@/lib/auth';
+import { initPublicRuntimeConfig } from '@/lib/runtime-config/public';
 
 export interface UserContextType {
     user: any;
@@ -35,6 +36,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 // If we get here and userData is null, it might be a different error
                 // or the redirect is in progress
                 setUser(userData);
+
+                // After login succeeds, load runtime config (protected endpoint) once and cache it.
+                if (userData) {
+                    initPublicRuntimeConfig().catch((err) => {
+                        console.warn('[UserContext] Failed to init runtime config:', err);
+                    });
+                }
 
                 // Console log user info from UserContext
                 if (userData) {

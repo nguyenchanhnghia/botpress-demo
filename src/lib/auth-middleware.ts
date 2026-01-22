@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ldapAuth } from '@/lib/ldap-auth';
+import { ldapAuth } from '@/lib/ldap-auth.server';
 
 export interface AuthenticatedUser {
     sub: string;

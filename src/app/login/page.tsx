@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/auth';
-import { ldapAuth } from '@/lib/ldap-auth';
 import Image from 'next/image';
 import Typewriter from '@/components/common/TypeWriter';
 
@@ -64,8 +63,7 @@ function LoginContent() {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const url = await ldapAuth.getAuthorizationUrl();
-      window.location.href = url; // redirect to IdP
+      window.location.href = '/api/auth/login'; // server-side redirect to IdP
     } catch (err) {
       console.error('Login error:', err);
       setError('Failed to initiate login.');

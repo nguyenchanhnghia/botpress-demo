@@ -2,9 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { apiRequest } from '@/lib/api';
 import { Button } from '@/components/common/Button';
 import { useUser } from '@/components/auth/UserContext';
+import UserMenu from '@/components/common/UserMenu';
+import { auth } from '@/lib/auth';
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_FILE_SIZE } from '@/lib/constants/common';
 
 interface ImageItem {
@@ -28,8 +31,10 @@ export default function AdminImagesPage() {
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false); // Loading state for preview image
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [imageUrls, setImageUrls] = useState<Record<string, string>>({}); // Cache presigned URLs by key
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({}); // Cache presigned URLs by key (used only for preview)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null); // Track which key was copied
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch images from DynamoDB
@@ -150,11 +155,16 @@ export default function AdminImagesPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to upload image');
     } finally {
+      // Always reset uploading state and clear the file input so the user can try again,
+      // even with the same file name.
       setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  // Get presigned URL for an image key
+  // Get presigned URL for an image key (used only when user clicks Preview)
   const getPresignedUrl = async (key: string): Promise<string | null> => {
     // Check cache first
     if (imageUrls[key]) {
@@ -183,56 +193,30 @@ export default function AdminImagesPage() {
 
   // Get presigned URL for image preview
   const getImagePreview = async (key: string) => {
-    const url = await getPresignedUrl(key);
-    if (url) {
-      setPreviewUrl(url);
-      setPreviewKey(key);
-    } else {
+    setPreviewLoading(true);
+    setPreviewKey(key);
+    setPreviewUrl(null); // Clear previous image while loading
+
+    try {
+      const url = await getPresignedUrl(key);
+      if (url) {
+        setPreviewUrl(url);
+      } else {
+        setError('Failed to load image preview');
+        setPreviewKey(null);
+      }
+    } catch (err) {
+      console.error('Error loading preview:', err);
       setError('Failed to load image preview');
+      setPreviewKey(null);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
-  // Fetch presigned URLs for all images when images list changes
-  useEffect(() => {
-    const fetchPresignedUrls = async () => {
-      if (images.length === 0) return;
-
-      // Get current cached URLs to check what we need to fetch
-      setImageUrls((currentUrls) => {
-        const keysToFetch = images
-          .filter((img) => !currentUrls[img.key])
-          .map((img) => img.key);
-
-        if (keysToFetch.length === 0) return currentUrls;
-
-        // Fetch multiple presigned URLs at once
-        apiRequest<{
-          success: boolean;
-          urls: Array<{ key: string; url: string }>;
-        }>('/api/admin/images/presigned-url', {
-          method: 'POST',
-          body: { keys: keysToFetch },
-          withAuth: true,
-        })
-          .then((response) => {
-            if (response.urls) {
-              const newUrls: Record<string, string> = {};
-              response.urls.forEach((item) => {
-                newUrls[item.key] = item.url;
-              });
-              setImageUrls((prev) => ({ ...prev, ...newUrls }));
-            }
-          })
-          .catch((err: any) => {
-            console.error('Failed to fetch presigned URLs:', err);
-          });
-
-        return currentUrls;
-      });
-    };
-
-    fetchPresignedUrls();
-  }, [images]);
+  // NOTE: We intentionally do NOT prefetch presigned URLs for all images to avoid
+  // generating many one-time URLs on page load. URLs are fetched only when the
+  // user explicitly clicks the Preview button.
 
   // Handle file input change - only store the file, don't upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -271,6 +255,14 @@ export default function AdminImagesPage() {
     }
   };
 
+  // Handle logout
+  const handleLogout = () => {
+    fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+      auth.logout();
+      router.push("/login");
+    });
+  };
+
   // Show loading while user is being determined
   if (userLoading) {
     return (
@@ -299,86 +291,282 @@ export default function AdminImagesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-8">
-      <div className="max-w-6xl mx-auto bg-white/80 rounded-2xl shadow-xl p-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Admin CMS - Image Management
-          </h1>
-          <div className="text-sm text-gray-600">
-            Logged in as: <span className="font-semibold">{user?.username}</span> (Admin)
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      {/* Header - Reused from botChat page */}
+      <div className="flex-shrink-0 sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-white/20 p-3 sm:p-4">
+        <div className="max-w-4xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Left: Avatar + title */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/botChat')}
+              className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
+            >
+              <Image
+                src="https://chatbotcdn.socialenable.co/vietjet-air/assets/images/amy-full-body.png"
+                alt="Banh Mi"
+                width={40}
+                height={40}
+                className="object-cover"
+              />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-red-600 to-yellow-600 bg-clip-text text-transparent truncate">
+                Banh Mi · Employee Support AI
+              </h1>
+              <p className="text-[11px] sm:text-xs text-gray-500">
+                VietJet Thailand internal assistant for policies &amp; SOPs
+              </p>
+            </div>
+          </div>
+
+          {/* Right: User menu (Clear Chat button excluded) */}
+          <div className="flex w-full sm:w-auto items-center justify-stretch sm:justify-end gap-2">
+            <UserMenu
+              items={[
+                { label: "Users", href: "/admin-cms/users", adminOnly: true },
+                { label: "Knowledge Base", href: "/admin-cms/knowleage-base", adminOnly: true },
+                { label: "Images", href: "/admin-cms/images", adminOnly: true },
+                {
+                  label: "Logout",
+                  onClick: handleLogout,
+                },
+              ]}
+            />
           </div>
         </div>
+      </div>
 
-        {error && !error.includes('Access denied') && (
-          <div className="mb-4 p-4 bg-red-100/50 backdrop-blur-sm rounded-xl border border-red-200/50">
-            <p className="text-red-600">{error}</p>
-          </div>
-        )}
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto p-4 sm:p-8">
+        <div className="bg-white/80 rounded-2xl shadow-xl p-6 sm:p-8">
 
-        {/* Upload Section */}
-        <div className="mb-8 p-6 bg-white/50 rounded-xl border-2 border-dashed border-gray-300 hover:border-blue-500 transition">
-          <div className="text-center">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ALLOWED_IMAGE_TYPES.join(',')}
-              onChange={handleFileChange}
-              disabled={uploading}
-              className="hidden"
-              id="image-upload"
-            />
-            <label
-              htmlFor="image-upload"
-              className="cursor-pointer inline-block mb-4"
-            >
-              <div className="flex flex-col items-center">
-                <svg
-                  className="w-12 h-12 text-gray-400 mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-                <span className="text-gray-600 mb-2">
-                  Click to select image
-                </span>
-                <span className="text-sm text-gray-400">
-                  PNG, JPG, GIF, WEBP up to 10MB
-                </span>
-              </div>
-            </label>
+          {error && !error.includes('Access denied') && (
+            <div className="mb-4 p-4 bg-red-100/50 backdrop-blur-sm rounded-xl border border-red-200/50">
+              <p className="text-red-600">{error}</p>
+            </div>
+          )}
 
-            {/* Selected file info and upload button */}
-            {selectedFile && (
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-gray-700">
-                      Selected: {selectedFile.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+          {/* Upload Section */}
+          <div className="mb-8 p-6 bg-white/50 rounded-xl border-2 border-dashed border-gray-300 hover:border-blue-500 transition">
+            <div className="text-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ALLOWED_IMAGE_TYPES.join(',')}
+                onChange={handleFileChange}
+                disabled={uploading}
+                className="hidden"
+                id="image-upload"
+              />
+              <label
+                htmlFor="image-upload"
+                className="cursor-pointer inline-block mb-4"
+              >
+                <div className="flex flex-col items-center">
+                  <svg
+                    className="w-12 h-12 text-gray-400 mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <span className="text-gray-600 mb-2">
+                    Click to select image
+                  </span>
+                  <span className="text-sm text-gray-400">
+                    PNG, JPG, GIF, WEBP up to 10MB
+                  </span>
+                </div>
+              </label>
+
+              {/* Selected file info and upload button */}
+              {selectedFile && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex-1 text-left">
+                      <p className="text-sm font-medium text-gray-700">
+                        Selected: {selectedFile.name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedFile(null);
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = '';
+                        }
+                      }}
+                      className="ml-2 text-gray-400 hover:text-gray-600"
+                      disabled={uploading}
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
                   </div>
+                  <Button
+                    onClick={handleUploadClick}
+                    disabled={uploading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {uploading ? 'Uploading...' : 'Upload Image'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Images Table */}
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Uploaded Images</h2>
+              <button
+                onClick={fetchImages}
+                disabled={loading}
+                className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+              >
+                {loading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="text-gray-500 mt-2">Loading images...</p>
+              </div>
+            ) : images.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <p>No images uploaded yet.</p>
+                <p className="text-sm mt-2">Upload your first image using the upload area above.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        File Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Size
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Uploaded At
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {images.map((image, index) => (
+                      <tr key={image.key || index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {image.fileName || image.key.split('/').pop()}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate max-w-md" title={image.key}>
+                            {image.key}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {(image.fileSize / 1024 / 1024).toFixed(2)} MB
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {new Date(image.uploadedAt).toLocaleDateString()}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(image.uploadedAt).toLocaleTimeString()}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(image.key);
+                                  // Show temporary feedback
+                                  setCopiedKey(image.key);
+                                  setTimeout(() => {
+                                    setCopiedKey(null);
+                                  }, 2000);
+                                } catch (err) {
+                                  console.error('Failed to copy:', err);
+                                }
+                              }}
+                              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${copiedKey === image.key
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                }`}
+                            >
+                              {copiedKey === image.key ? 'Copied!' : 'Copy Key'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => getImagePreview(image.key)}
+                              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                            >
+                              Preview
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Preview Modal */}
+          {previewUrl && (
+            <div
+              className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4"
+              onClick={() => {
+                setPreviewUrl(null);
+                setPreviewKey(null);
+                setPreviewLoading(false);
+              }}
+            >
+              <div
+                className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-center p-4 border-b">
+                  <h3 className="text-lg font-semibold">
+                    Image Preview: {previewKey?.split('/').pop()}
+                  </h3>
                   <button
                     onClick={() => {
-                      setSelectedFile(null);
-                      if (fileInputRef.current) {
-                        fileInputRef.current.value = '';
-                      }
+                      setPreviewUrl(null);
+                      setPreviewKey(null);
+                      setPreviewLoading(false);
                     }}
-                    className="ml-2 text-gray-400 hover:text-gray-600"
-                    disabled={uploading}
+                    className="text-gray-500 hover:text-gray-700"
                   >
                     <svg
-                      className="w-5 h-5"
+                      className="w-6 h-6"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -392,141 +580,39 @@ export default function AdminImagesPage() {
                     </svg>
                   </button>
                 </div>
-                <Button
-                  onClick={handleUploadClick}
-                  disabled={uploading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  {uploading ? 'Uploading...' : 'Upload Image'}
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Images Grid */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Uploaded Images</h2>
-            <button
-              onClick={fetchImages}
-              disabled={loading}
-              className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400"
-            >
-              {loading ? 'Loading...' : 'Refresh'}
-            </button>
-          </div>
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <p className="text-gray-500 mt-2">Loading images...</p>
-            </div>
-          ) : images.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <p>No images uploaded yet.</p>
-              <p className="text-sm mt-2">Upload your first image using the upload area above.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {images.map((image, index) => (
-                <div
-                  key={image.key || index}
-                  className="relative group bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition"
-                >
-                  <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                    {imageUrls[image.key] ? (
-                      <img
-                        src={imageUrls[image.key]}
-                        alt={image.fileName || image.key}
-                        className="w-full h-full object-cover"
+                <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
+                  {previewLoading ? (
+                    <div className="flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                      <p className="text-gray-600">Loading image...</p>
+                    </div>
+                  ) : previewUrl ? (
+                    <div className="w-full">
+                      <Image
+                        src={previewUrl}
+                        alt="Preview"
+                        width={800}
+                        height={600}
+                        className="w-full h-auto max-w-full"
+                        style={{ objectFit: 'contain', display: 'block' }}
+                        unoptimized={true}
+                        onLoad={() => setPreviewLoading(false)}
+                        onError={() => {
+                          setPreviewLoading(false);
+                          setError('Failed to load image');
+                        }}
                       />
-                    ) : (
-                      <div className="text-center p-4">
-                        <svg
-                          className="w-12 h-12 text-gray-400 mx-auto mb-2"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                          />
-                        </svg>
-                        <p className="text-xs text-gray-500">No preview</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <Button
-                      onClick={() => getImagePreview(image.key)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded"
-                    >
-                      Preview
-                    </Button>
-                  </div>
-                  <div className="p-2">
-                    <p className="text-xs text-gray-600 truncate" title={image.key}>
-                      {image.key.split('/').pop()}
-                    </p>
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                      <p className="text-gray-600">No image to display</p>
+                    </div>
+                  )}
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </div>
-
-        {/* Preview Modal */}
-        {previewUrl && (
-          <div
-            className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4"
-            onClick={() => {
-              setPreviewUrl(null);
-              setPreviewKey(null);
-            }}
-          >
-            <div
-              className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center p-4 border-b">
-                <h3 className="text-lg font-semibold">
-                  Image Preview: {previewKey?.split('/').pop()}
-                </h3>
-                <button
-                  onClick={() => {
-                    setPreviewUrl(null);
-                    setPreviewKey(null);
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
-                <img
-                  src={previewUrl}
-                  alt="Preview"
-                  className="max-w-full h-auto mx-auto"
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

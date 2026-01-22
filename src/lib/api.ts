@@ -86,11 +86,9 @@ export async function botpressApiRequest<T = any>(
 }
 
 export function getBotpressHeaders(): Record<string, string> {
-    const token = process.env.NEXT_PUBLIC_BOTPRESS_TOKEN || process.env.BOTPRESS_TOKEN;
     const userKey = Cookies.get('x-user-key'); // or your cookie name
 
     return {
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...(userKey ? { 'x-user-key': userKey } : {}),
     };
 } 

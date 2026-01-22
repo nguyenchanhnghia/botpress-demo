@@ -20,12 +20,13 @@ import { getItem, putItem, queryItems, deleteItem } from './dynamo';
 const USERS_TABLE = process.env.USERS_TABLE || 'vz-users-botpress';
 const USERS_EMAIL_INDEX = process.env.USERS_EMAIL_INDEX || process.env.USERS_EMAIL_GSI || 'gsi_email';
 // Primary key attribute name in the DynamoDB table. Some tables use 'id', others 'user_id' etc.
-const USERS_TABLE_PK = process.env.USERS_TABLE_PK || process.env.USERS_TABLE_PK_NAME || 'id';
+const USERS_TABLE_PK = process.env.USERS_TABLE_PK || process.env.USERS_TABLE_PK_NAME || 'user_id';
 
 export type UserRecord = {
     id: string;
     email?: string;
     displayName?: string;
+    role?: string;
     [key: string]: any;
 };
 
@@ -49,7 +50,10 @@ const Users = {
             } as any;
 
             const items = await queryItems<UserRecord>(params);
-            if (items && items.length > 0) return items[0];
+            console.log('items', items);
+            if (!items?.[0]) return null;
+            return await Users.findById(items[0].user_id);
+
         } catch (err) {
             // If query fails (no index) or permission/credential error, do not perform a full table scan here.
             const msg = (err as Error).message || String(err);

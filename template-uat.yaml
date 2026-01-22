@@ -1,21 +1,30 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Internal AI UAT (Next.js on Lambda + Function URL)
+Description: Internal AI UAT (Next.js on Lambda + Function URL)  FULL ENV, SHARED ASSETS
 
+# =========================================================
+# PARAMETERS
+# =========================================================
 Parameters:
+  Env:
+    Type: String
+    Default: uat
+    AllowedValues:
+      - dev
+      - uat
+      - prod
+
   FunctionName:
     Type: String
     Default: internal-ai-bot-uat
-    Description: Lambda function name (UAT)
 
   EcrImageUri:
     Type: String
     Default: 345034663883.dkr.ecr.ap-southeast-1.amazonaws.com/vz/internal-ai:uat
-    Description: ECR image URI for UAT
 
   DeployVersion:
     Type: String
     Default: manual-0
-    Description: Force Lambda redeploy
+    Description: Change to force redeploy
 
   Memory:
     Type: Number
@@ -25,16 +34,12 @@ Parameters:
     Type: Number
     Default: 30
 
-  NextPublicUrl:
-    Type: String
-    Default: https://wiki.vietjetthai.com
-
   # =========================
-  # Botpress (UAT)
+  # Botpress
   # =========================
   BotpressWebhookUrl:
     Type: String
-    Default: https://webhook.botpress.cloud/6e333992-4b6f-452f-9089-990386321bf5
+    Default: https://webhook.botpress.cloud/6e333992-4bc2-452f-9089-990386321bf5
 
   BotpressToken:
     Type: String
@@ -46,12 +51,7 @@ Parameters:
 
   BotpressApiUrl:
     Type: String
-    Default: https://api.botpress.cloud
-
-  JwtSecret:
-    Type: String
-    NoEcho: true
-    Default: ''
+    Default: https://chat.botpress.cloud
 
   BotId:
     Type: String
@@ -61,12 +61,17 @@ Parameters:
     Type: String
     NoEcho: true
 
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+
   # =========================
-  # LDAP (UAT)
+  # LDAP
   # =========================
   NextPublicLdapAuthUrl:
     Type: String
-    Default: https://ldap-auth-uat.vietjetthai.com
+    Default: https://ldap-auth.vietjetthai.com
 
   NextPublicClientId:
     Type: String
@@ -76,32 +81,66 @@ Parameters:
     Type: String
     Default: https://wiki.vietjetthai.com/api/auth/callback
 
+  NextPublicAppUrl:
+    Type: String
+    Default: https://wiki.vietjetthai.com
+
   # =========================
-  # DynamoDB (UAT)
+  # DynamoDB
   # =========================
   UsersTableName:
     Type: String
     Default: vz-users-botpress-uat
 
+  UsersTablePK:
+    Type: String
+    Default: user_id
+
   UserEmailGSI:
     Type: String
     Default: gsi_email
 
+  # ? SHARED WITH PRODUCTION
   FilesTableName:
     Type: String
-    Default: vz-internal-ai-files-uat
+    Default: vz-internal-ai-files
+
+  FilesTablePK:
+    Type: String
+    Default: file_id
 
   # =========================
-  # S3 (UAT)
+  # S3 (SHARED)
   # =========================
   AssetsBucketName:
     Type: String
-    Default: vz-internal-ai-uat
+    Default: vz-internal-ai-prod
 
+  AssetsBucketPrefix:
+    Type: String
+    Default: banhmi/
+
+  # =========================
+  # CURATOR ROLE (ASSUME)
+  # =========================
+  CuratorRoleArn:
+    Type: String
+    Description: IAM Role ARN allowed to curate shared assets
+    Default: arn:aws:iam::345034663883:role/internal-ai-assets-curator
+    NoEcho: true
+
+# =========================================================
+# RESOURCES
+# =========================================================
 Resources:
-  # IAM Role
+
+  # -------------------------
+  # IAM ROLE
+  # -------------------------
   LambdaRole:
     Type: AWS::IAM::Role
+    DependsOn:
+      - UsersTable
     Properties:
       RoleName: internal-ai-bot-role-uat
       AssumeRolePolicyDocument:
@@ -111,9 +150,12 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
+
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
       Policies:
+        # DynamoDB
         - PolicyName: DynamoDbAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -123,16 +165,38 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                   - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
                   - !GetAtt UsersTable.Arn
                   - !Sub ${UsersTable.Arn}/index/${UserEmailGSI}
-                  - !GetAtt FilesTable.Arn
-                  - !Sub ${FilesTable.Arn}/index/gsi_bucket_key
+                  - !Sub arn:aws:dynamodb:*:*:table/${FilesTableName}
+                  - !Sub arn:aws:dynamodb:*:*:table/${FilesTableName}/index/*
 
-  # Lambda
+        # S3 ? UAT: PUT ONLY (NO DELETE)
+        - PolicyName: S3UploadOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::${AssetsBucketName}/${AssetsBucketPrefix}*
+
+        # Assume Curator Role
+        - PolicyName: AssumeCuratorRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref CuratorRoleArn
+
+  # -------------------------
+  # LAMBDA
+  # -------------------------
   AppFn:
     Type: AWS::Lambda::Function
     Properties:
@@ -146,15 +210,44 @@ Resources:
       Architectures:
         - x86_64
       Description: !Sub DeployVersion=${DeployVersion}
+
       Environment:
         Variables:
+          # ===== App =====
           APP_ENV: uat
           NODE_ENV: production
-          NEXT_PUBLIC_APP_URL: !Ref NextPublicUrl
+          NEXT_PUBLIC_APP_ENV: uat
+          NEXT_PUBLIC_APP_URL: !Ref NextPublicAppUrl
+
+          # ===== S3 =====
+          S3_BUCKET_NAME: !Ref AssetsBucketName
+          S3_BUCKET_PREFIX: !Ref AssetsBucketPrefix
+          CURATOR_ROLE_ARN: !Ref CuratorRoleArn
+
+          # ===== DynamoDB =====
           USERS_TABLE: !Ref UsersTableName
+          USERS_TABLE_PK: !Ref UsersTablePK
           USERS_EMAIL_INDEX: !Ref UserEmailGSI
           FILES_TABLE: !Ref FilesTableName
+          FILES_TABLE_PK: !Ref FilesTablePK
 
+          # ===== Botpress =====
+          BOTPRESS_WEBHOOK_URL: !Ref BotpressWebhookUrl
+          BOTPRESS_TOKEN: !Ref BotpressToken
+          BOTPRESS_CLIENT_ID: !Ref BotpressClientId
+          BOT_PRESS_API_URL: !Ref BotpressApiUrl
+          BOT_ID: !Ref BotId
+          BOTPRESS_API_USER_KEY: !Ref BotPressAPIUserKey
+          JWT_SECRET: !Ref JwtSecret
+
+          # ===== LDAP =====
+          LDAP_AUTH_URL: !Ref NextPublicLdapAuthUrl
+          CLIENT_ID: !Ref NextPublicClientId
+          REDIRECT_URI: !Ref NextPublicRedirectUri
+
+  # -------------------------
+  # FUNCTION URL
+  # -------------------------
   AppFnUrl:
     Type: AWS::Lambda::Url
     Properties:
@@ -169,7 +262,9 @@ Resources:
       Principal: '*'
       FunctionUrlAuthType: NONE
 
-  # DynamoDB Users (UAT)
+  # -------------------------
+  # USERS TABLE (UAT ONLY)
+  # -------------------------
   UsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -191,46 +286,21 @@ Resources:
           Projection:
             ProjectionType: ALL
 
-  # DynamoDB Files (UAT)
-  FilesTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Ref FilesTableName
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: file_id
-          AttributeType: S
-        - AttributeName: bucket_key
-          AttributeType: S
-        - AttributeName: created_at
-          AttributeType: S
-      KeySchema:
-        - AttributeName: file_id
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: gsi_bucket_key
-          KeySchema:
-            - AttributeName: bucket_key
-              KeyType: HASH
-            - AttributeName: created_at
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-
-  # S3 Bucket (UAT)
-  AssetsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref AssetsBucketName
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
+# =========================================================
+# OUTPUTS
+# =========================================================
 Outputs:
   FunctionUrl:
-    Description: Public Lambda Function URL (UAT)
     Value: !GetAtt AppFnUrl.FunctionUrl
+
+  UsersTableOut:
+    Value: !Ref UsersTableName
+
+  SharedAssetsBucket:
+    Value: !Ref AssetsBucketName
+
+  SharedFilesTable:
+    Value: !Ref FilesTableName
+
+  CuratorRoleArnOut:
+    Value: !Ref CuratorRoleArn

@@ -1,6 +1,6 @@
 import { jwtVerify, createRemoteJWKSet, decodeJwt } from 'jose';
 import Cookies from 'js-cookie';
-import { config } from './config';
+import { getPublicRuntimeConfig } from '@/lib/runtime-config/public';
 
 export interface LDAPUser {
   sub: string;
@@ -32,10 +32,20 @@ const USER_COOKIE_NAME = 'user_data';
 const USER_KEY_COOKIE_NAME = 'x-user-key';
 const CONVERSATION_COOKIE_NAME = 'conversation_data';
 
-// LDAP Auth service configuration
-const LDAP_AUTH_BASE_URL = config.ldapAuthUrl;
-const CLIENT_ID = config.clientId;
-const REDIRECT_URI = config.redirectUri;
+function getClientCookieOptions() {
+  const isSecure = typeof window !== 'undefined' ? window.location.protocol === 'https:' : false;
+  // SameSite=None requires Secure; Lax is safest default for local/dev.
+  const sameSite: 'none' | 'lax' = isSecure ? 'none' : 'lax';
+  return {
+    expires: 7, // days
+    secure: isSecure,
+    sameSite,
+  };
+}
+
+async function getAuthConfig() {
+  return await getPublicRuntimeConfig();
+}
 
 
 
@@ -49,6 +59,7 @@ export const ldapAuth = {
 
   // Get authorization URL for LDAP login
   getAuthorizationUrl: async (_state?: string) => {
+    const cfg = await getAuthConfig();
     const { codeVerifier, codeChallenge } = await ldapAuth.generatePKCE();
 
     // Store code verifier in a short-lived cookie so server-side callback can read it
@@ -58,7 +69,7 @@ export const ldapAuth = {
       // Use SameSite=lax so the cookie is sent on the OAuth provider redirect (top-level GET)
       Cookies.set('pkce_code_verifier', codeVerifier, {
         expires: 0.007,
-        secure: config.cookieConfig.secure,
+        secure: getClientCookieOptions().secure,
         sameSite: 'lax',
         path: '/'
       });
@@ -66,8 +77,8 @@ export const ldapAuth = {
 
     const params = new URLSearchParams({
       response_type: 'code',
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
+      client_id: cfg.clientId,
+      redirect_uri: cfg.redirectUri,
       scope: 'openid email profile',
       state: _state || generateRandomString(),
       code_challenge: codeChallenge,
@@ -75,13 +86,14 @@ export const ldapAuth = {
       nonce: generateRandomString()
     });
 
-    return `${LDAP_AUTH_BASE_URL}/authorize?${params.toString()}`;
+    return `${cfg.ldapAuthUrl}/authorize?${params.toString()}`;
   },
 
   // Exchange authorization code for tokens
   // Accept optional codeVerifier for server-side exchanges
   exchangeCodeForToken: async (code: string, codeVerifierFromServer?: string): Promise<{ user: LDAPUser; token: string } | null> => {
     try {
+      const cfg = await getAuthConfig();
       // Prefer the explicitly provided code verifier (server-side). Otherwise read from cookie in browser.
       let codeVerifier: string | null = null;
       if (codeVerifierFromServer) {
@@ -94,15 +106,15 @@ export const ldapAuth = {
         throw new Error('Code verifier not found');
       }
 
-      const response = await fetch(`${LDAP_AUTH_BASE_URL}/token`, {
+      const response = await fetch(`${cfg.ldapAuthUrl}/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
           grant_type: 'authorization_code',
-          client_id: CLIENT_ID,
-          redirect_uri: REDIRECT_URI,
+          client_id: cfg.clientId,
+          redirect_uri: cfg.redirectUri,
           code,
           code_verifier: codeVerifier
         })
@@ -118,12 +130,12 @@ export const ldapAuth = {
       // Verify and decode the JWT token
       // Decode the token to discover the issuer and build JWKS endpoint dynamically
       const decoded = decodeJwt(data.id_token as string) as any;
-      const tokenIssuer: string = decoded.iss || LDAP_AUTH_BASE_URL;
+      const tokenIssuer: string = decoded.iss || cfg.ldapAuthUrl;
       const jwksUrl = `${tokenIssuer.replace(/\/$/, '')}/.well-known/jwks.json`;
       const jwks = createRemoteJWKSet(new URL(jwksUrl));
 
       const { payload } = await jwtVerify(data.id_token, jwks, {
-        audience: CLIENT_ID,
+        audience: cfg.clientId,
         issuer: tokenIssuer
       });
 
@@ -154,13 +166,14 @@ export const ldapAuth = {
   // Verify token and get user info
   verifyToken: async (token: string): Promise<LDAPUser | null> => {
     try {
+      const cfg = await getAuthConfig();
       const decoded = decodeJwt(token as string) as any;
-      const tokenIssuer: string = decoded.iss || LDAP_AUTH_BASE_URL;
+      const tokenIssuer: string = decoded.iss || cfg.ldapAuthUrl;
       const jwksUrl = `${tokenIssuer.replace(/\/$/, '')}/.well-known/jwks.json`;
       const jwks = createRemoteJWKSet(new URL(jwksUrl));
 
       const { payload } = await jwtVerify(token, jwks, {
-        audience: CLIENT_ID,
+        audience: cfg.clientId,
         issuer: tokenIssuer
       });
 
@@ -195,21 +208,22 @@ export const ldapAuth = {
 export const auth = {
   // Set authentication cookies
   login: (user: LDAPUser, token: string) => {
+    const cookie = getClientCookieOptions();
     Cookies.set(AUTH_COOKIE_NAME, token, {
-      expires: config.cookieConfig.expires,
-      secure: config.cookieConfig.secure,
-      sameSite: config.cookieConfig.sameSite
+      expires: cookie.expires,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite
     });
     Cookies.set(USER_COOKIE_NAME, JSON.stringify(user), {
-      expires: config.cookieConfig.expires,
-      secure: config.cookieConfig.secure,
-      sameSite: config.cookieConfig.sameSite
+      expires: cookie.expires,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite
     });
     // Set the x-user-key cookie for Botpress
     Cookies.set(USER_KEY_COOKIE_NAME, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljMWI1ODViLWIxOWUtNGMwNy1iYTQ4LWNiZjUzYjJjYjZlOCIsImlhdCI6MTc2MTA0NDc0OH0.3tVt0zkrYH5SAuAxEdynXPprq38TRfUSngm2pTBjucw', {
-      expires: config.cookieConfig.expires,
-      secure: config.cookieConfig.secure,
-      sameSite: config.cookieConfig.sameSite
+      expires: cookie.expires,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite
     });
   },
 
@@ -264,10 +278,11 @@ export const auth = {
 
   // Save conversation data to cookie
   saveConversation: (conversation: { id: string; userId: string }) => {
+    const cookie = getClientCookieOptions();
     Cookies.set(CONVERSATION_COOKIE_NAME, JSON.stringify(conversation), {
-      expires: config.cookieConfig.expires,
-      secure: config.cookieConfig.secure,
-      sameSite: config.cookieConfig.sameSite
+      expires: cookie.expires,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite
     });
   },
 

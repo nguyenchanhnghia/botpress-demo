@@ -6,14 +6,15 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanComma
 // - AWS_REGION (required)
 // - DYNAMODB_ENDPOINT (optional, for local testing e.g. http://localhost:8000)
 
-const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || "ap-southeast-1";
+const region = process.env.AWS_REGION || "ap-southeast-1";
 const endpoint = process.env.DYNAMODB_ENDPOINT || undefined;
 
 let docClient: DynamoDBDocumentClient | null = null;
 
 function getDocClient() {
     if (docClient) return docClient;
-
+    console.log('region', region);
+    console.log('endpoint', endpoint);
     const client = new DynamoDBClient({
         region,
         ...(endpoint ? { endpoint } : {})

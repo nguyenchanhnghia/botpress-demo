@@ -1,3 +1,4 @@
+import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,22 +12,93 @@ import { v4 as uuidv4 } from 'uuid';
  * - S3_ENDPOINT (optional, for local testing)
  */
 
-const region = process.env.AWS_REGION || process.env.NEXT_PUBLIC_AWS_REGION || 'ap-southeast-1';
-const bucketName = process.env.S3_BUCKET_NAME || process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
+const region = process.env.AWS_REGION || 'ap-southeast-1';
 const endpoint = process.env.S3_ENDPOINT || undefined;
 
-let s3Client: S3Client | null = null;
+let curatorClient: S3Client | null = null;
+let curatorClientExpiresAt: number | null = null;
 
-function getS3Client(): S3Client {
-  if (s3Client) return s3Client;
+function getBucketName(): string {
+  const name = process.env.S3_BUCKET_NAME;
 
-  s3Client = new S3Client({
+  if (!name) {
+    throw new Error('S3_BUCKET_NAME environment variable is required');
+  }
+
+  return name;
+}
+
+async function getWriteS3Client(): Promise<S3Client> {
+  const roleArn = process.env.CURATOR_ROLE_ARN;
+  if (!roleArn) {
+    throw new Error('CURATOR_ROLE_ARN is required for upload');
+  }
+
+  const sts = new STSClient({ region });
+
+  const { Credentials } = await sts.send(
+    new AssumeRoleCommand({
+      RoleArn: roleArn,
+      RoleSessionName: `asset-upload-${Date.now()}`,
+      DurationSeconds: 900, // 15 minutes
+    })
+  );
+
+  if (!Credentials) {
+    throw new Error('Failed to assume AssetsCuratorRole');
+  }
+
+  return new S3Client({
+    region,
+    credentials: {
+      accessKeyId: Credentials.AccessKeyId!,
+      secretAccessKey: Credentials.SecretAccessKey!,
+      sessionToken: Credentials.SessionToken!,
+    },
+  });
+}
+
+async function getCuratorS3Client(): Promise<S3Client> {
+  const roleArn = process.env.CURATOR_ROLE_ARN;
+  if (!roleArn) {
+    throw new Error('CURATOR_ROLE_ARN is required for presigned URLs');
+  }
+
+  // Reuse cached assumed-role client until shortly before expiration
+  if (curatorClient && curatorClientExpiresAt && Date.now() < curatorClientExpiresAt - 60_000) {
+    return curatorClient;
+  }
+
+  const sts = new STSClient({ region });
+  const { Credentials } = await sts.send(
+    new AssumeRoleCommand({
+      RoleArn: roleArn,
+      RoleSessionName: `asset-curator-${Date.now()}`,
+      DurationSeconds: 900, // 15 minutes
+    })
+  );
+
+  if (!Credentials) {
+    throw new Error('Failed to assume curator role');
+  }
+
+  curatorClientExpiresAt = Credentials.Expiration
+    ? new Date(Credentials.Expiration).getTime()
+    : Date.now() + 15 * 60_000;
+
+  curatorClient = new S3Client({
     region,
     ...(endpoint ? { endpoint } : {}),
+    credentials: {
+      accessKeyId: Credentials.AccessKeyId!,
+      secretAccessKey: Credentials.SecretAccessKey!,
+      sessionToken: Credentials.SessionToken!,
+    },
   });
 
-  return s3Client;
+  return curatorClient;
 }
+
 
 export interface UploadImageParams {
   file: Buffer | Uint8Array;
@@ -47,11 +119,11 @@ export interface ImageMetadata {
  * Upload an image to S3
  */
 export async function uploadImage(params: UploadImageParams): Promise<ImageMetadata> {
-  if (!bucketName) {
-    throw new Error('S3_BUCKET_NAME environment variable is required');
-  }
+  const bucketName = getBucketName();
 
-  const client = getS3Client();
+  // 🔐 WRITE CLIENT (AssumeRole)
+  const client = await getWriteS3Client();
+
   const fileExtension = params.fileName.split('.').pop() || 'jpg';
   const uniqueFileName = `${uuidv4()}.${fileExtension}`;
   const key = params.folder ? `${params.folder}/${uniqueFileName}` : uniqueFileName;
@@ -86,11 +158,13 @@ export async function getPresignedUrl(
   key: string,
   expiresIn: number = 3600 // 1 hour default
 ): Promise<string> {
+  const bucketName = getBucketName();
   if (!bucketName) {
     throw new Error('S3_BUCKET_NAME environment variable is required');
   }
 
-  const client = getS3Client();
+  // 🔐 Use curator role for signing presigned GET URLs
+  const client = await getCuratorS3Client();
   const command = new GetObjectCommand({
     Bucket: bucketName,
     Key: key,
@@ -108,7 +182,7 @@ export async function getPresignedUrls(
   expiresIn: number = 3600
 ): Promise<Record<string, string>> {
   const urls: Record<string, string> = {};
-  
+
   await Promise.all(
     keys.map(async (key) => {
       try {
@@ -128,7 +202,8 @@ export function initS3ForTests(opts: { region?: string; endpoint?: string; bucke
   if (opts.endpoint) process.env.S3_ENDPOINT = opts.endpoint;
   if (opts.bucketName) process.env.S3_BUCKET_NAME = opts.bucketName;
   // Reset client so next call rebuilds with new config
-  s3Client = null;
+  curatorClient = null;
+  curatorClientExpiresAt = null;
 }
 
 const s3 = {

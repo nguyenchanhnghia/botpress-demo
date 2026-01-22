@@ -23,7 +23,7 @@ import { putItem, getItem, scanTable, deleteItem } from './dynamo';
  */
 
 const FILES_TABLE = process.env.FILES_TABLE || 'vz-files';
-const FILES_TABLE_PK = process.env.FILES_TABLE_PK || process.env.FILES_TABLE_PK_NAME || 'id';
+const FILES_TABLE_PK = process.env.FILES_TABLE_PK || process.env.FILES_TABLE_PK_NAME || 'file_id';
 
 export type FileRecord = {
   id: string;
@@ -58,6 +58,7 @@ const Files = {
 
     const record: FileRecord = {
       id,
+      [FILES_TABLE_PK]: id, // Set the primary key attribute (file_id or id)
       key: data.key,
       url: data.url,
       contentType: data.contentType,

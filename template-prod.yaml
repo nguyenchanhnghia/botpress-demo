@@ -287,7 +287,7 @@ Resources:
           NEXT_TELEMETRY_DISABLED: '1'
           AWS_LWA_ENABLE_COMPRESSION: 'true'
           AWS_LWA_ASYNC_INIT: 'true'
-          NEXT_PUBLIC_APP_URL: !Ref NextPublicUrl
+          APP_URL: !Ref NextPublicUrl
 
           # ===== Botpress =====
           BOTPRESS_WEBHOOK_URL: !Ref BotpressWebhookUrl
@@ -299,9 +299,9 @@ Resources:
           BOTPRESS_API_USER_KEY: !Ref BotPressAPIUserKey
 
           # ===== LDAP =====
-          NEXT_PUBLIC_LDAP_AUTH_URL: !Ref NextPublicLdapAuthUrl
-          NEXT_PUBLIC_CLIENT_ID: !Ref NextPublicClientId
-          NEXT_PUBLIC_REDIRECT_URI: !Ref NextPublicRedirectUri
+          LDAP_AUTH_URL: !Ref NextPublicLdapAuthUrl
+          LDAP_CLIENT_ID: !Ref NextPublicClientId
+          LDAP_REDIRECT_URI: !Ref NextPublicRedirectUri
 
           # ===== DynamoDB Users table =====
           USERS_TABLE: !Ref UsersTableName

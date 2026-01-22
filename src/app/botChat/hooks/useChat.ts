@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { auth, botpressAPI } from "@/lib/auth";
+import { getPublicRuntimeConfig } from "@/lib/runtime-config/public";
 
 export interface ChatMessage {
   id: string;
@@ -126,7 +127,7 @@ export function useChat() {
         const payload = JSON.stringify({
           msg: `My name is ${nameOrEmail}`,
           type: "start_conversation",
-          env: process.env.NEXT_PUBLIC_APP_ENV || process.env.APP_ENV,
+          env: (await getPublicRuntimeConfig()).appEnv || 'production',
         });
 
         if (conversationData?.id) {

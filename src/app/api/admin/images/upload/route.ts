@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       file: buffer,
       fileName: file.name,
       contentType: file.type,
-      folder: 'botpress', // Store in 'botpress' folder
+      folder: 'banhmi', // Store in 'banhmi' folder
     });
 
     // Save file record to DynamoDB
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       contentType: result.contentType,
       fileName: file.name,
       fileSize: file.size,
-      folder: 'botpress',
+      folder: 'banhmi',
       uploadedBy: requesterEmail,
     });
 

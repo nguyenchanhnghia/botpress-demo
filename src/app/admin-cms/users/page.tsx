@@ -1,5 +1,5 @@
 import Users from '@/lib/aws/users';
-import { ldapAuth } from '@/lib/ldap-auth';
+import { ldapAuth } from '@/lib/ldap-auth.server';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import AdminUsersClient from './AdminUsersClient';

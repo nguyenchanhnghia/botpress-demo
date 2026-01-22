@@ -1,7 +1,10 @@
 "use client";
 
 import { memo, useRef, useEffect, useCallback, useState } from "react";
+import Image from "next/image";
 import { auth, botpressAPI } from "@/lib/auth";
+import { apiRequest } from "@/lib/api";
+import { getPublicRuntimeConfig } from "@/lib/runtime-config/public";
 import AIThinking from "./AIThinking";
 import { ChatInput } from "./ChatInput";
 
@@ -50,6 +53,33 @@ function sanitizeHTML(html: string) {
   return html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
 }
 
+// Extract markdown image patterns: ![alt text](botpress/path.jpg)
+interface ImageReference {
+  fullMatch: string;
+  altText: string;
+  imageKey: string;
+  startIndex: number;
+  endIndex: number;
+}
+
+function extractImageReferences(text: string): ImageReference[] {
+  const pattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const matches: ImageReference[] = [];
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    matches.push({
+      fullMatch: match[0],
+      altText: match[1] || "",
+      imageKey: match[2],
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
+    });
+  }
+
+  return matches;
+}
+
 export const MessageList = memo(function MessageList({
   conversationId,
   conversationUserId,
@@ -65,6 +95,9 @@ export const MessageList = memo(function MessageList({
   const [botTyping, setBotTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showRefreshPopup, setShowRefreshPopup] = useState(false);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({}); // Cache presigned URLs by key
+  const [previewImage, setPreviewImage] = useState<{ url: string; alt: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const eventSourceRef = useRef<{ close: () => void } | null>(null);
@@ -84,6 +117,163 @@ export const MessageList = memo(function MessageList({
       onMessagesChangeRef.current?.(messages);
     }
   }, [messages]);
+
+  // Get presigned URL for an image key
+  const getPresignedUrl = useCallback(async (key: string): Promise<string | null> => {
+    // Check cache first
+    if (imageUrls[key]) {
+      return imageUrls[key];
+    }
+
+    try {
+      const response = await apiRequest<{
+        success: boolean;
+        url: string;
+        key: string;
+      }>('/api/admin/images/presigned-url', {
+        method: 'POST',
+        body: { key },
+        withAuth: true,
+      });
+
+      // Cache the presigned URL
+      if (response.url) {
+        setImageUrls((prev) => ({ ...prev, [key]: response.url }));
+        return response.url;
+      }
+      return null;
+    } catch (err: any) {
+      console.error('Failed to get presigned URL:', err);
+      return null;
+    }
+  }, [imageUrls]);
+
+
+  // Handle image preview
+  const handleImagePreview = useCallback(async (imageKey: string, altText: string) => {
+    setPreviewLoading(true);
+    const url = await getPresignedUrl(imageKey);
+    if (url) {
+      setPreviewImage({ url, alt: altText || imageKey });
+    } else {
+      setError('Failed to load image preview');
+    }
+    setPreviewLoading(false);
+  }, [getPresignedUrl]);
+
+  // Render message text with image thumbnails
+  const renderMessageWithImages = useCallback((text: string) => {
+    const imageRefs = extractImageReferences(text);
+
+    if (imageRefs.length === 0) {
+      // No images, render normally
+      if (containsHTML(text)) {
+        return (
+          <div
+            className="text-sm"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHTML(text),
+            }}
+          />
+        );
+      }
+      return <p className="text-sm whitespace-pre-line">{text}</p>;
+    }
+
+    // Split text into parts (text segments and image references)
+    const parts: Array<{ type: 'text' | 'image'; content: string; imageRef?: ImageReference }> = [];
+    let lastIndex = 0;
+
+    imageRefs.forEach((ref) => {
+      // Add text before image
+      if (ref.startIndex > lastIndex) {
+        parts.push({
+          type: 'text',
+          content: text.substring(lastIndex, ref.startIndex),
+        });
+      }
+      // Add image reference
+      parts.push({
+        type: 'image',
+        content: ref.imageKey,
+        imageRef: ref,
+      });
+      lastIndex = ref.endIndex;
+    });
+
+    // Add remaining text after last image
+    if (lastIndex < text.length) {
+      parts.push({
+        type: 'text',
+        content: text.substring(lastIndex),
+      });
+    }
+
+    return (
+      <div className="text-sm">
+        {parts.map((part, idx) => {
+          if (part.type === 'text') {
+            if (containsHTML(part.content)) {
+              return (
+                <div
+                  key={idx}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHTML(part.content),
+                  }}
+                />
+              );
+            }
+            return (
+              <span key={idx} className="whitespace-pre-line">
+                {part.content}
+              </span>
+            );
+          } else {
+            // Render image thumbnail
+            const imageKey = part.content;
+            const imageUrl = imageUrls[imageKey];
+            const altText = part.imageRef?.altText || imageKey;
+
+            return (
+              <div key={idx} className="my-2 inline-block">
+                <div className="relative group">
+                  {imageUrl ? (
+                    <>
+                      <Image
+                        src={imageUrl}
+                        alt={altText}
+                        width={200}
+                        height={150}
+                        className="rounded-lg border border-gray-200 max-w-[200px] h-auto cursor-pointer hover:opacity-80 transition-opacity"
+                        unoptimized={true}
+                        onClick={() => handleImagePreview(imageKey, altText)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleImagePreview(imageKey, altText)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors rounded-lg"
+                      >
+                        <span className="opacity-0 group-hover:opacity-100 text-white text-xs bg-black/50 px-2 py-1 rounded">
+                          Preview
+                        </span>
+                      </button>
+                    </>
+                  ) : (
+                    <div className="w-[200px] h-[150px] bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                        <p className="text-xs text-gray-500">Loading...</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+        })}
+      </div>
+    );
+  }, [imageUrls, handleImagePreview]);
 
   // Load messages when conversationId changes
   useEffect(() => {
@@ -148,7 +338,7 @@ export const MessageList = memo(function MessageList({
           const welcomePayload = JSON.stringify({
             msg: `My name is ${nameOrEmail}`,
             type: "start_conversation",
-            env: process.env.NEXT_PUBLIC_APP_ENV || process.env.APP_ENV || 'production',
+            env: (await getPublicRuntimeConfig()).appEnv || 'production',
           });
 
           console.log("welcomePayload", welcomePayload);
@@ -169,6 +359,33 @@ export const MessageList = memo(function MessageList({
 
     loadMessages();
   }, [conversationId, initializing]);
+
+  // Fetch presigned URLs for all images in messages
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const fetchImageUrls = async () => {
+      const allImageKeys = new Set<string>();
+
+      // Extract all image keys from messages
+      messages.forEach((msg) => {
+        const imageRefs = extractImageReferences(msg.text);
+        imageRefs.forEach((ref) => {
+          allImageKeys.add(ref.imageKey);
+        });
+      });
+
+      // Fetch URLs for images that aren't cached
+      const keysToFetch = Array.from(allImageKeys).filter((key) => !imageUrls[key]);
+
+      if (keysToFetch.length > 0) {
+        const urlPromises = keysToFetch.map((key) => getPresignedUrl(key));
+        await Promise.all(urlPromises);
+      }
+    };
+
+    fetchImageUrls();
+  }, [messages, imageUrls, getPresignedUrl]);
 
   // Set up SSE listener when conversationId changes
   useEffect(() => {
@@ -478,18 +695,9 @@ export const MessageList = memo(function MessageList({
                 >
                   {isChoiceType && showOptions ? (
                     <>
-                      {containsHTML(msg.text) ? (
-                        <div
-                          className="text-sm mb-2"
-                          dangerouslySetInnerHTML={{
-                            __html: sanitizeHTML(msg.text),
-                          }}
-                        />
-                      ) : (
-                        <span className="text-sm mb-2 whitespace-pre-line block">
-                          {msg.text}
-                        </span>
-                      )}
+                      <div className="text-sm mb-2">
+                        {renderMessageWithImages(msg.text)}
+                      </div>
                       <div className="mt-2 grid grid-cols-2 gap-2 items-stretch">
                         {(msg?.options ?? []).map((opt: any, i: number) => (
                           <button
@@ -516,18 +724,9 @@ export const MessageList = memo(function MessageList({
                     </>
                   ) : showOptions ? (
                     <>
-                      {containsHTML(msg.text) ? (
-                        <div
-                          className="text-sm mb-2"
-                          dangerouslySetInnerHTML={{
-                            __html: sanitizeHTML(msg.text),
-                          }}
-                        />
-                      ) : (
-                        <span className="text-sm mb-2 whitespace-pre-line block">
-                          {msg.text}
-                        </span>
-                      )}
+                      <div className="text-sm mb-2">
+                        {renderMessageWithImages(msg.text)}
+                      </div>
                       <form
                         className="mt-2 space-y-2"
                         onSubmit={(e) => e.preventDefault()}
@@ -551,15 +750,8 @@ export const MessageList = memo(function MessageList({
                         ))}
                       </form>
                     </>
-                  ) : containsHTML(msg.text) ? (
-                    <div
-                      className="text-sm"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHTML(msg.text),
-                      }}
-                    />
                   ) : (
-                    <p className="text-sm whitespace-pre-line">{msg.text}</p>
+                    renderMessageWithImages(msg.text)
                   )}
                   <p
                     className={`text-xs mt-1 ${isCurrentUser ? "text-blue-100" : "text-gray-500"
@@ -642,6 +834,73 @@ export const MessageList = memo(function MessageList({
               >
                 Refresh Page
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => {
+            setPreviewImage(null);
+            setPreviewLoading(false);
+          }}
+        >
+          <div
+            className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold">
+                {previewImage.alt}
+              </h3>
+              <button
+                onClick={() => {
+                  setPreviewImage(null);
+                  setPreviewLoading(false);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
+              {previewLoading ? (
+                <div className="flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  <p className="text-gray-600">Loading image...</p>
+                </div>
+              ) : previewImage.url ? (
+                <div className="w-full">
+                  <Image
+                    src={previewImage.url}
+                    alt={previewImage.alt}
+                    width={800}
+                    height={600}
+                    className="w-full h-auto max-w-full"
+                    style={{ objectFit: 'contain', display: 'block' }}
+                    unoptimized={true}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                  <p className="text-gray-600">No image to display</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
