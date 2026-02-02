@@ -1,189 +1,111 @@
-# MongoDB Authentication Setup
+# Authentication Setup (OIDC/PKCE + DynamoDB Roles)
 
-This project uses MongoDB for user authentication with access tokens stored in the database.
+This project uses **OIDC Authorization Code + PKCE** against the company “LDAP Auth” identity provider.
 
-## Features
+There is **no username/password authentication stored in MongoDB** in this repo. Roles are resolved from **DynamoDB** after login.
 
-- **Secure Authentication**: Passwords are hashed using bcrypt
-- **Role-based Access**: Users have roles (admin, ict, com, pd)
-- **HTTP-only Cookies**: Access tokens are stored in secure HTTP-only cookies
-- **Server-side Validation**: All authentication is validated on the server
-- **Protected API Routes**: Middleware protects API endpoints
+## High-level flow
 
-## Setup
+1. User opens `/login`
+2. Frontend redirects to `GET /api/auth/login`
+3. Server generates PKCE verifier/challenge and redirects to the IdP authorize endpoint
+4. IdP redirects back to `GET /api/auth/callback?code=...`
+5. Callback exchanges code → `id_token` and sets cookies:
+   - `auth_token` (**HttpOnly**): used for server-side authorization
+   - `user_data` (readable): UI convenience (displayName/email/role/etc.)
+   - `x-user-key` (readable): Botpress user key used by the chat UI
+6. Client initializes session by calling `GET /api/protected`, which:
+   - validates `auth_token`
+   - merges role/profile data from DynamoDB
+   - updates `user_data` cookie
 
-### 1. Environment Variables
+## Required environment variables
 
-Create a `.env.local` file with:
+Configure in `.env.local` (or `.env.uat` / `.env.prod`):
 
-```env
-MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>
-```
+### OIDC / LDAP Auth
 
-### 2. Initialize Database
+- `APP_URL`
+  - Example: `http://localhost:3001`
+  - Used to compute the default redirect URI.
+- `LDAP_AUTH_URL`
+  - Example: `https://ldap-auth.example.com`
+  - This is used as the base for `/authorize` and `/token`.
+- `LDAP_CLIENT_ID`
+  - Client ID registered at the IdP.
+- `LDAP_REDIRECT_URI` (optional)
+  - If not set, the app defaults to `${APP_URL}/api/auth/callback`.
+- `APP_ENV` (optional)
+  - Used by chat bootstrapping payloads (e.g. `uat`, `prod`).
 
-Run the database initialization script to create default users:
+## Cookies
 
-```bash
-npm run init-db
-```
+These are the main cookies used by the app:
 
-This creates the following users:
-- `admin/password` (admin role)
-- `ict/password` (ict role)
-- `com/password` (com role)
-- `pd/password` (pd role)
+- `auth_token` (**HttpOnly**)
+  - Contains the OIDC ID token (JWT)
+  - Read server-side by `requireAuth` in `src/lib/auth-middleware.ts`
+- `user_data` (readable)
+  - JSON user object for client UI (role/displayName/etc.)
+- `x-user-key` (readable)
+  - Botpress user key used by client chat calls
+- `pkce_code_verifier` (**HttpOnly**, short-lived)
+  - Temporary PKCE verifier used only during the callback exchange
 
-### 3. Start Development Server
+## Key routes
 
-```bash
-npm run dev
-```
+### Auth routes
 
-## API Endpoints
+- `GET /api/auth/login`
+  - Starts the OIDC/PKCE flow
+  - Writes `pkce_code_verifier` (HttpOnly) and redirects to IdP
+- `GET /api/auth/callback`
+  - Exchanges code → token, resolves Botpress key + DynamoDB user record, sets cookies, redirects to `/botChat`
+- `POST /api/auth/logout`
+  - Clears cookies
 
-### Authentication
+### Protected endpoints
 
-- `POST /api/auth/login` - Login with username/password
-- `POST /api/auth/logout` - Logout and clear access token
-- `POST /api/auth/register` - Register new user (admin only)
+- `GET /api/protected`
+  - Validates the session and refreshes role/profile data from DynamoDB
+- `GET /api/config`
+  - Returns a **safe** subset of runtime config for the browser
+  - This endpoint is protected (requires a valid session)
 
-### Protected Routes
+## Adding a protected API route
 
-- `GET /api/protected` - Example protected endpoint
-- Any route using `requireAuth` middleware
-
-## Usage
-
-### Client-Side Authentication
-
-```typescript
-import { authenticateUser, logoutUser, checkAuthStatus } from '@/lib/auth';
-
-// Login
-const result = await authenticateUser('admin', 'password');
-if (result) {
-  // User is logged in
-  console.log(result.user);
-}
-
-// Check auth status
-const user = await checkAuthStatus();
-if (user) {
-  // User is authenticated
-}
-
-// Logout
-await logoutUser();
-```
-
-### Server-Side Authentication
+Use `requireAuth`:
 
 ```typescript
+import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-middleware';
 
 export async function GET(req: NextRequest) {
   const user = await requireAuth(req);
-  
-  if (user instanceof NextResponse) {
-    return user; // Unauthorized
-  }
-  
-  // User is authenticated
-  return NextResponse.json({ user });
+  if (user instanceof NextResponse) return user; // 401/500
+
+  return NextResponse.json({ ok: true, user });
 }
 ```
 
-## Database Schema
+## Role-based access (admin)
 
-### Users Collection
+Admin-only APIs (e.g. `/api/admin/*`) resolve the caller’s role from DynamoDB and check it against:
 
-```javascript
-{
-  _id: ObjectId,
-  username: String,
-  passwordHash: String, // bcrypt hash
-  role: String, // 'admin', 'ict', 'com', 'pd'
-  accessToken: String, // UUID
-  email: String,
-  createdAt: Date
-}
-```
+- `ADMIN_ROLES` in `src/lib/constants/roles.ts` (currently `admin` and `super-admin`)
 
-## Security Features
+Example check pattern is implemented in:
 
-- **Password Hashing**: bcrypt with 12 salt rounds
-- **HTTP-only Cookies**: Access tokens cannot be accessed by JavaScript
-- **Server-side Validation**: All authentication checks happen on the server
-- **Token Rotation**: New access token generated on each login
-- **Secure Headers**: Proper cookie security settings
-
-## File Structure
-
-```
-src/
-├── lib/
-│   ├── auth.ts              # Client-side auth utilities
-│   ├── auth-middleware.ts   # Server-side auth middleware
-│   ├── mongo.ts             # MongoDB connection
-│   └── api.ts               # API request utilities
-├── app/
-│   ├── api/
-│   │   ├── auth/
-│   │   │   ├── login/
-│   │   │   │   └── route.ts
-│   │   │   ├── logout/
-│   │   │   │   └── route.ts
-│   │   │   └── register/
-│   │   │       └── route.ts
-│   │   └── protected/
-│   │       └── route.ts
-│   └── ...
-└── scripts/
-    └── init-db.js          # Database initialization
-```
-
-## Adding New Protected Routes
-
-1. Import the middleware:
-```typescript
-import { requireAuth } from '@/lib/auth-middleware';
-```
-
-2. Use it in your route:
-```typescript
-export async function GET(req: NextRequest) {
-  const user = await requireAuth(req);
-  if (user instanceof NextResponse) return user;
-  
-  // Your protected logic here
-}
-```
-
-## Role-based Access Control
-
-Check user roles in your API routes:
-
-```typescript
-if (user.role !== 'admin') {
-  return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-}
-```
+- `src/app/api/admin/users/route.ts`
+- `src/app/api/admin/images/route.ts`
+- `src/app/api/admin/images/upload/route.ts`
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **MongoDB Connection Error**: Check your `MONGODB_URI` environment variable
-2. **Authentication Fails**: Ensure the database is initialized with `npm run init-db`
-3. **Cookie Issues**: Check that cookies are enabled and the domain is correct
-
-### Debug Mode
-
-Add logging to see authentication flow:
-
-```typescript
-// In auth-middleware.ts
-console.log('Access token:', accessToken);
-console.log('User found:', user);
-``` 
+- **Login loops / redirects**
+  - Ensure `APP_URL` matches the actual origin you are using in the browser.
+  - Ensure the IdP client config allows the redirect URI.
+- **401 from `/api/protected`**
+  - Session expired or invalid token; re-login.
+- **Admin pages show access denied**
+  - The user exists but role in DynamoDB is not `admin`/`super-admin`.

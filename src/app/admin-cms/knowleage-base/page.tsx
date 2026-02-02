@@ -150,6 +150,7 @@ export default function AdminCMSPage() {
           <div className="flex w-full sm:w-auto items-center justify-stretch sm:justify-end gap-2">
             <UserMenu
               items={[
+                { label: "Chat", href: "/botChat" },
                 { label: "Users", href: "/admin-cms/users", adminOnly: true },
                 { label: "Knowledge Base", href: "/admin-cms/knowleage-base", adminOnly: true },
                 { label: "Images", href: "/admin-cms/images", adminOnly: true },

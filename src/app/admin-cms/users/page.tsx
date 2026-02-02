@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import AdminUsersClient from './AdminUsersClient';
 import { ADMIN_ROLES } from '@/lib/constants/roles';
+import { serverRuntimeConfig } from '@/lib/runtime-config/server';
 
 export default async function AdminUsersPage() {
   // Server-side auth: read token from cookies or headers
@@ -14,9 +15,35 @@ export default async function AdminUsersPage() {
     const headerToken = headersList.get('authorization')?.replace('Bearer ', '') || null;
     const finalToken = cookieToken || headerToken;
 
-    if (!finalToken) return redirect('/login');
+    const isUat = (serverRuntimeConfig.appEnv || '').toLowerCase() === 'uat';
 
-    const user = await ldapAuth.verifyToken(finalToken);
+    let user: any = null;
+
+    if (finalToken) {
+      user = await ldapAuth.verifyToken(finalToken);
+    }
+
+    // UAT-only fallback: use `user_data` cookie set by /api/auth/uat-login
+    if (!user && isUat) {
+      const rawUser = cookieStore.get('user_data')?.value || null;
+      if (rawUser) {
+        try {
+          const parsed = JSON.parse(rawUser) as any;
+          user = {
+            sub: parsed.sub,
+            email: parsed.email,
+            displayName: parsed.displayName,
+            department: parsed.department,
+            title: parsed.title,
+            givenName: parsed.givenName,
+            company: parsed.company,
+          };
+        } catch {
+          user = null;
+        }
+      }
+    }
+
     if (!user) return redirect('/login');
 
     // Ensure requester is admin in Dynamo

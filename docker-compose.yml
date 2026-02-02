@@ -32,7 +32,8 @@ services:
       APP_ENV: development
       AWS_REGION: ap-southeast-1
       AWS_PROFILE: mfa-session
-      AWS_SDK_GOOD_CONFIG: "1"
+      AWS_SDK_LOAD_CONFIG: "1"
+      AWS_DEFAULT_REGION: ap-southeast-1
     env_file:
       - ./.env.local
     command: sh -c "if [ ! -d node_modules ]; then npm install; fi && npm run dev -- --hostname 0.0.0.0 --port 3001"
@@ -55,9 +56,10 @@ services:
       APP_ENV: uat
       AWS_REGION: ap-southeast-1
       AWS_PROFILE: mfa-session
-      AWS_SDK_GOOD_CONFIG: "1"
+      AWS_SDK_LOAD_CONFIG: "1"
+      AWS_DEFAULT_REGION: ap-southeast-1
       # UAT should not default to prod bucket
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-vz-internal-ai-uat}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-vz-internal-ai-prod}
     env_file:
       - ./.env.uat
     command: sh -c "if [ ! -d node_modules ] || [ ! -f node_modules/.bin/next ]; then npm install; fi && npm run dev -- --hostname 0.0.0.0 --port 3001"

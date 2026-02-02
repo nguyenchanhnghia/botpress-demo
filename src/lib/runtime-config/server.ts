@@ -47,7 +47,7 @@ function buildServerRuntimeConfig(): ServerRuntimeConfig {
 
   const ldapAuthUrl =
     process.env.LDAP_AUTH_URL ||
-    'https://zu4airs4fpwj2t2pxln6uweupa0qsryn.lambda-url.ap-southeast-1.on.aws';
+    'https://ldap-auth.vietjetthai.com';
 
   const clientId = process.env.LDAP_CLIENT_ID || 'vz-wiki-frontend';
 

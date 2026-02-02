@@ -115,6 +115,7 @@ export default function AdminUsersClient({ initialUsers }: AdminUsersClientProps
             </Button>
             <UserMenu
               items={[
+                { label: 'Chat', href: '/botChat' },
                 { label: 'Users', href: '/admin-cms/users', adminOnly: true },
                 { label: 'Knowledge Base', href: '/admin-cms/knowleage-base', adminOnly: true },
                 { label: 'Images', href: '/admin-cms/images', adminOnly: true },

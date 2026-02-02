@@ -23,18 +23,22 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const isUat = (process.env.APP_ENV || '').toLowerCase() === 'uat';
+  const hasUatUser = isUat && !!request.cookies.get('user_data')?.value;
+
   // Get the auth token from cookies
   const token = request.cookies.get('auth_token')?.value;
   console.log(`🍪 Middleware: Token exists: ${!!token}`);
 
   // Check if token exists and is not expired
-  if (!token || isTokenExpired(token)) {
+  if ((!token || isTokenExpired(token)) && !hasUatUser) {
     if (pathname === '/login') {
       console.log(`✅ Middleware: Allowing access to login page`);
       return NextResponse.next();
     }
     console.log(`🔄 Middleware: No valid token - redirecting to login`);
-    return NextResponse.redirect(new URL('/login', request.url));
+    const loginPath = '/login';
+    return NextResponse.redirect(new URL(loginPath, request.url));
   }
 
   // If user has token and is on login page, redirect to botChat

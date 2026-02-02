@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Missing x-user-key' }, { status: 401 });
     }
     try {
-        const res = await fetch(`${process.env.BOT_PRESS_API_URL}/v1/files?tags.source=knowledge-base`, {
+        console.log(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files?tags[source]=knowledge-base`);
+        const res = await fetch(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files?tags[source]=knowledge-base`, {
             method: 'GET',
             headers: {
                 'x-user-key': userKey,
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
             },
         });
         const data = await res.json();
+        console.log(data);
         if (!res.ok) {
             return NextResponse.json({ error: data.error || 'Failed to fetch files' }, { status: res.status });
         }
@@ -37,7 +39,7 @@ export async function PUT(req: NextRequest) {
     }
     try {
         const body = await req.json();
-        const res = await fetch(`${process.env.BOT_PRESS_API_URL}/v1/files/${body.id}`, {
+        const res = await fetch(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files/${body.id}`, {
             method: 'PUT',
             headers: {
                 'x-user-key': userKey,

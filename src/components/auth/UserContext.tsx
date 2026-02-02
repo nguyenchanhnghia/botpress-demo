@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { checkAuthStatus } from '@/lib/auth';
 import { initPublicRuntimeConfig } from '@/lib/runtime-config/public';
 
@@ -16,20 +16,21 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const router = useRouter();
+    const pathname = usePathname();
 
     useEffect(() => {
-        // Don't check auth on login or callback pages (prevents loops)
-        if (typeof window !== 'undefined') {
-            const currentPath = window.location.pathname;
-            if (currentPath === '/login' || currentPath === '/api/auth/callback') {
-                setLoading(false);
-                return;
-            }
+        // Don't check auth on login pages (prevents loops), but DO re-check when navigating away.
+        // Using pathname ensures this effect reruns after a successful login redirect.
+        const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+        if (currentPath === '/login' || currentPath === '/login-uat' || currentPath === '/api/auth/callback') {
+            setUser(null);
+            setLoading(false);
+            return;
         }
 
         const fetchUser = async () => {
             try {
+                setLoading(true);
                 const userData = await checkAuthStatus();
 
                 // checkAuthStatus will handle 401 redirects internally and clear all data
@@ -74,7 +75,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         };
 
         fetchUser();
-    }, [router]);
+    }, [pathname]);
 
     return (
         <UserContext.Provider value={{ user, setUser, loading }}>

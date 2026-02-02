@@ -37,7 +37,7 @@ export const clearAllAuthData = async (): Promise<void> => {
     try {
         // Don't call logout API if we're already on login page (prevents loop)
         const currentPath = window.location.pathname;
-        if (currentPath !== '/login' && currentPath !== '/api/auth/callback') {
+        if (currentPath !== '/login' && currentPath !== '/login-uat' && currentPath !== '/api/auth/callback') {
             try {
                 // Call logout API to clear server-side cookies (httpOnly cookies)
                 await fetch('/api/auth/logout', {
@@ -93,7 +93,7 @@ export const checkAuthStatus = async (): Promise<any | null> => {
     // Don't check auth status if we're on login or callback pages (prevents loops)
     if (typeof window !== 'undefined') {
         const currentPath = window.location.pathname;
-        if (currentPath === '/login' || currentPath === '/api/auth/callback') {
+        if (currentPath === '/login' || currentPath === '/login-uat' || currentPath === '/api/auth/callback') {
             return null;
         }
     }
@@ -114,11 +114,12 @@ export const checkAuthStatus = async (): Promise<any | null> => {
             if (typeof window !== 'undefined') {
                 const currentPath = window.location.pathname;
                 // Only redirect if not already on login page
-                if (currentPath !== '/login' && currentPath !== '/api/auth/callback') {
+                if (currentPath !== '/login' && currentPath !== '/login-uat' && currentPath !== '/api/auth/callback') {
                     // Clear all cookies and user data
                     await clearAllAuthData();
-                    // Redirect to login
-                    window.location.href = '/login';
+                    // Redirect to login (prefer UAT email login if configured)
+                    const uatLogin = (process.env.NEXT_PUBLIC_APP_ENV || '').toLowerCase() === 'uat' ? '/login-uat' : '/login';
+                    window.location.href = uatLogin;
                 }
             }
             return null;

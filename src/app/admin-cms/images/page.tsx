@@ -323,6 +323,7 @@ export default function AdminImagesPage() {
           <div className="flex w-full sm:w-auto items-center justify-stretch sm:justify-end gap-2">
             <UserMenu
               items={[
+                { label: "Chat", href: "/botChat" },
                 { label: "Users", href: "/admin-cms/users", adminOnly: true },
                 { label: "Knowledge Base", href: "/admin-cms/knowleage-base", adminOnly: true },
                 { label: "Images", href: "/admin-cms/images", adminOnly: true },
@@ -478,8 +479,17 @@ export default function AdminImagesPage() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {images.map((image, index) => (
                       <tr key={image.key || index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
+                        <td className="px-6 py-4 align-top">
+                          <div
+                            className="text-sm font-medium text-gray-900 break-words max-w-md"
+                            style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                            title={image.fileName || image.key.split('/').pop()}
+                          >
                             {image.fileName || image.key.split('/').pop()}
                           </div>
                           <div className="text-xs text-gray-500 truncate max-w-md" title={image.key}>

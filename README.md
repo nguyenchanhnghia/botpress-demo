@@ -1,38 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## TVJ Internal AI Assistant (Banh Mi) – Frontend
 
-## Getting Started
+This is a **Next.js 15 (App Router)** web app for VietJet Thailand’s internal assistant:
+- **Chat UI** backed by **Botpress Cloud** (`/botChat`)
+- **Admin CMS** for **Users/Roles**, **Knowledge Base file role tags**, and **Images** (`/admin-cms/*`)
+- **Authentication** via **OIDC/PKCE** against the company “LDAP Auth” identity provider
+- **Roles/user records** stored in **DynamoDB**
+- **Images** uploaded to **S3** and indexed in **DynamoDB**, displayed using **presigned URLs**
 
-First, run the development server:
+## Quick start
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Dev server runs on **`http://localhost:3001`** (see `package.json`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Main routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Login**: `/login`
+- **Chat**: `/botChat`
+- **Admin CMS**
+  - `/admin-cms/users`
+  - `/admin-cms/knowleage-base`
+  - `/admin-cms/images`
 
-## Learn More
+## Authentication flow (high level)
 
-To learn more about Next.js, take a look at the following resources:
+- `/login` → `GET /api/auth/login`
+- `GET /api/auth/login` generates **PKCE** and redirects to the IdP authorize endpoint
+- IdP redirects back to `GET /api/auth/callback`
+- Callback exchanges the code for an ID token and sets cookies:
+  - **`auth_token`** (**HttpOnly**) – used for server-side authorization
+  - **`user_data`** (readable) – used by client UI
+  - **`x-user-key`** (readable) – used by client Botpress calls
+- `GET /api/protected` validates the session and refreshes role/profile from DynamoDB
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Roles
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Roles are stored in DynamoDB and used for gating admin pages/APIs:
+- Standard: `ict`, `com`, `pd`
+- Admin: `admin`, `super-admin`
 
-## Deploy on Vercel
+## Environment variables (summary)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Configure in `.env.local` (or `.env.uat` / `.env.prod`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### App / OIDC
 
-#{"user":{"id":"9c1b585b-b19e-4c07-ba48-cbf53b2cb6e8","createdAt":"2025-10-21T11:05:48.473Z","updatedAt":"2025-10-21T11:05:48.473Z","name":"Nghia Nguyen","pictureUrl":"https://gravatar.com/avatar/27205e5c51cb03f862138b22bcb5dc20f94a342e744ff6df1b8dc8af3c865109.jpg","profile":"Nghia Nguyen"},"key":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljMWI1ODViLWIxOWUtNGMwNy1iYTQ4LWNiZjUzYjJjYjZlOCIsImlhdCI6MTc2MTA0NDc0OH0.3tVt0zkrYH5SAuAxEdynXPprq38TRfUSngm2pTBjucw"}
+- `APP_URL` (default `http://localhost:3001`)
+- `APP_ENV` (e.g. `uat`, `prod`)
+- `LDAP_AUTH_URL`
+- `LDAP_CLIENT_ID`
+- `LDAP_REDIRECT_URI` (optional; defaults to `${APP_URL}/api/auth/callback`)
+
+### Botpress
+
+- `BOTPRESS_BASE_URL` (chat runtime base, e.g. `https://chat.botpress.cloud/<botId>`)
+- `BOT_PRESS_CLOUD_API_URL` (management API origin, typically `https://api.botpress.cloud`)
+- `BOT_ID`
+- `BOTPRESS_TOKEN` (server-side token for Botpress Cloud APIs)
+- `BOTPRESS_API_USER_KEY` / `DEFAULT_BOTPRESS_KEY` (service key used server-side to create Botpress users)
+
+### AWS (DynamoDB + S3)
+
+- `AWS_REGION`
+- `USERS_TABLE`, `USERS_EMAIL_INDEX` (or `USERS_EMAIL_GSI`), `USERS_TABLE_PK`
+- `FILES_TABLE`, `FILES_TABLE_PK`
+- `S3_BUCKET_NAME`
+- `CURATOR_ROLE_ARN` (assume-role used for uploads + presigned URLs)
+
+## Useful API routes
+
+- **Auth**: `/api/auth/login`, `/api/auth/callback`, `/api/auth/logout`
+- **Session check**: `/api/protected`
+- **Runtime config (protected)**: `/api/config`
+- **Admin**
+  - `/api/admin/users` (list/update roles)
+  - `/api/admin/images` (list)
+  - `/api/admin/images/upload` (upload)
+  - `/api/admin/images/presigned-url` (preview URLs)
+- **Botpress (KB tagging)**: `/api/botpress/files`
+
+## Security notes
+
+- **Do not commit tokens/keys** in markdown files or code. If credentials were committed, rotate them and move them to environment variables.
