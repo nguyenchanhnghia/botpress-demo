@@ -4,28 +4,37 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useUser } from "@/components/auth/UserContext";
-import { Button } from "@/components/common/Button";
-import { apiRequest } from "@/lib/api";
-import MultiSelect from "@/components/common/MultiSelect";
 import UserMenu from "@/components/common/UserMenu";
-
-interface FileItem {
-  id: string;
-  name: string;
-  role: string[]; // Change to array for multi-select
-  [key: string]: any;
-}
-
-const ROLES = ["ict", "com", "pd", "admin"];
+import { Button, ButtonOutline } from "@/components/common/Button";
+import KnowledgeBaseTable from "./KnowledgeBaseTable";
+import EditFileModal from "./EditFileModal";
+import { useKnowledgeBaseFiles } from "./useKnowledgeBaseFiles";
+import type { FileItem } from "./types";
 
 export default function AdminCMSPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
-  const [files, setFiles] = useState<FileItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [selectedRolesMap, setSelectedRolesMap] = useState<{ [fileId: string]: string[] }>({});
+  const [editFile, setEditFile] = useState<FileItem | null>(null);
+  const {
+    filteredFiles,
+    loading,
+    error: fetchError,
+    nextToken,
+    prevTokens,
+    getFileName,
+    fetchFiles,
+    handleNextPage,
+    handlePrevPage,
+    searchTerm,
+    setSearchTerm,
+    searching,
+    searchResults,
+    searchError,
+    searchByName,
+    clearSearch,
+    isSearchActive,
+  } = useKnowledgeBaseFiles(user?.email, !!user && user.role === "admin");
 
 
   // Simple admin-only role check
@@ -44,52 +53,25 @@ export default function AdminCMSPage() {
     }
   }, [user, userLoading, router]);
 
-  // Fetch files with authentication
-  useEffect(() => {
-    if (!user || user.role !== "admin") return;
-
-    const fetchFiles = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await apiRequest(`/api/botpress/files`, { withAuth: true });
-        setFiles(data.files || data);
-        // Initialize selectedRolesMap
-        const initialMap: { [fileId: string]: string[] } = {};
-        (data.files || data).forEach((file: FileItem) => {
-          if (file.tags.roles) {
-            initialMap[file.id] = JSON.parse(file.tags.roles);
-          }
-        });
-        setSelectedRolesMap(initialMap);
-      } catch (err: any) {
-        setError(err.message || "Failed to fetch files");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchFiles();
-  }, [user]);
-
-  // Handle role update with better error handling
-  const handleRoleUpdate = async (file: FileItem) => {
-    setUpdating(file.id);
-    try {
-      await apiRequest(`/api/botpress/files`, {
-        method: "PUT",
-        body: { id: file.id, data: { tags: { roles: JSON.stringify(selectedRolesMap[file.id]) } } },
-        withAuth: true,
-      });
-      setFiles((prev) =>
-        prev.map((f) => f.id === file.id ? { ...f, role: selectedRolesMap[file.id] } : f)
-      );
-    } catch (err: any) {
-      console.log(err)
-      // setError(err.message || "Failed to update file role");
-    } finally {
-      setUpdating(null);
-    }
+  const handleEditClick = (file: FileItem) => {
+    setEditFile(file);
   };
+
+  const handleCloseModal = () => {
+    setEditFile(null);
+  };
+
+  useEffect(() => {
+    if (fetchError) setError(fetchError);
+  }, [fetchError]);
+
+  useEffect(() => {
+    if (searchError) setError(searchError);
+  }, [searchError]);
+
+  const displayFiles = isSearchActive
+    ? searchResults
+    : filteredFiles;
 
   // Show loading while user is being determined
   if (userLoading) {
@@ -139,7 +121,7 @@ export default function AdminCMSPage() {
             <div className="min-w-0">
               <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-red-600 to-yellow-600 bg-clip-text text-transparent truncate">
                 TVJ Internal Assistant
-          </h1>
+              </h1>
               <p className="text-[11px] sm:text-xs text-gray-500">
                 Admin CMS · Knowledge Base
               </p>
@@ -164,82 +146,79 @@ export default function AdminCMSPage() {
       <div className="p-4 sm:p-8">
         <div className="max-w-6xl mx-auto bg-white/80 rounded-2xl shadow-xl p-4 sm:p-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Knowledge Base Files
-            </h2>
-        </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="relative min-w-100">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by filename..."
+                  className="w-full rounded-full border border-gray-200 bg-white pl-4 pr-0 py-2 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+                />
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  disabled={loading || searching || !searchTerm.trim()}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full text-[14px] font-semibold text-gray-700 bg-transparent hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ×
+                </button>
+              </div>
+              <ButtonOutline
+                onClick={() => searchByName(searchTerm)}
+                disabled={loading || searching || !searchTerm.trim()}
+                className="px-4"
+              >
+                {searching ? "..." : "Search"}
+              </ButtonOutline>
+            </div>
+            <div className="flex items-center gap-2">
+              <ButtonOutline
+                onClick={handlePrevPage}
+                disabled={loading || searching || prevTokens.length === 0 || isSearchActive}
+                className="px-4"
+              >
+                Prev
+              </ButtonOutline>
+              <ButtonOutline
+                onClick={handleNextPage}
+                disabled={loading || searching || !nextToken || isSearchActive}
+                className="px-4"
+              >
+                Next
+              </ButtonOutline>
+            </div>
+          </div>
 
-        {loading ? (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading files...</p>
-          </div>
-        ) : error ? (
-          <div className="text-center p-4 bg-red-100/50 backdrop-blur-sm rounded-xl border border-red-200/50">
-            <p className="text-red-600">{error}</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full max-w-full text-left border-separate border-spacing-y-2">
-              <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-gray-600 bg-white/50">
-                  <th className="py-3 px-4 break-words whitespace-normal">No</th>
-                  <th className="py-3 px-4 break-words whitespace-normal">File Name</th>
-                  <th className="py-3 px-4 min-w-[12rem] break-words whitespace-normal">Role</th>
-                  <th className="py-3 px-4 break-words whitespace-normal">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {files.map((file, index) => {
-                  const selectedRoles = selectedRolesMap[file.id] || [];
-                  const roles = file.tags.roles ? JSON.parse(file.tags.roles) : [];
-                    const rolesChanged =
-                      JSON.stringify(selectedRoles?.sort()) !==
-                      JSON.stringify(roles?.sort() ?? []);
-
-                  return (
-                    <tr
-                      key={file.id}
-                      className="bg-white/70 rounded-lg shadow-sm transition hover:bg-white"
-                    >
-                        <td className="py-3 px-4 font-mono text-sm text-gray-800 break-words whitespace-normal">
-                          {index + 1}
-                        </td>
-                        <td className="py-3 px-4 font-mono text-sm text-gray-800 break-words whitespace-normal">
-                          {file.key}
-                        </td>
-                      <td className="py-3 px-4 min-w-[12rem] break-words whitespace-normal">
-                        <MultiSelect
-                          options={ROLES}
-                          value={selectedRoles}
-                            onChange={(v) => {
-                              setSelectedRolesMap((prev) => ({ ...prev, [file.id]: v }));
-                            }}
-                          disabled={updating === file.id}
-                        />
-                      </td>
-                      <td className="py-3 px-4 break-words whitespace-normal">
-                        {rolesChanged ? (
-                          <Button
-                            onClick={() => handleRoleUpdate(file)}
-                            disabled={updating === file.id}
-                            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1 rounded-md shadow transition"
-                          >
-                            {updating === file.id ? "Saving..." : "Update"}
-                          </Button>
-                        ) : (
-                          <span className="text-green-500 text-sm">✓</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {loading || searching ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">{searching ? "Searching files..." : "Loading files..."}</p>
+            </div>
+          ) : error ? (
+            <div className="text-center p-4 bg-red-100/50 backdrop-blur-sm rounded-xl border border-red-200/50">
+              <p className="text-red-600">{error}</p>
+            </div>
+          ) : (
+            <KnowledgeBaseTable
+              files={displayFiles}
+              getFileName={getFileName}
+              onEdit={handleEditClick}
+            />
+          )}
         </div>
       </div>
+      {editFile && (
+        <EditFileModal
+          file={editFile}
+          getFileName={getFileName}
+          onClose={handleCloseModal}
+          onUploaded={() => {
+            handleCloseModal();
+            fetchFiles();
+          }}
+        />
+      )}
     </div>
   );
 } 

@@ -11,8 +11,15 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Missing x-user-key' }, { status: 401 });
     }
     try {
-        console.log(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files?tags[source]=knowledge-base`);
-        const res = await fetch(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files?tags[source]=knowledge-base`, {
+        const { searchParams } = new URL(req.url);
+        const nextToken = searchParams.get('nextToken');
+
+        const url = new URL(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files`);
+        url.searchParams.set('tags[source]', 'knowledge-base');
+        if (nextToken) url.searchParams.set('nextToken', nextToken);
+
+        console.log(url.toString());
+        const res = await fetch(url.toString(), {
             method: 'GET',
             headers: {
                 'x-user-key': userKey,
