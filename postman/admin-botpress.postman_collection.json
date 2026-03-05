@@ -1,0 +1,279 @@
+{
+  "info": {
+    "name": "VZ Wiki Frontend - Admin & Botpress APIs",
+    "description": "Postman collection for admin APIs and Botpress proxy APIs (Next.js).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "appBaseUrl",
+      "value": "https://wiki.vietjetthai.com"
+    },
+    {
+      "key": "botpressApiUrl",
+      "value": "https://chat.botpress.cloud"
+    },
+    {
+      "key": "botpressChatBaseUrl",
+      "value": "https://chat.botpress.cloud/84b23382-8059-4173-a155-287893828551"
+    },
+    {
+      "key": "botpressToken",
+      "value": "bp_bak_Srfy7S2v84czR8AuNyUSY3EuDsDRZvXq6fYH"
+    },
+    {
+      "key": "botpressBotId",
+      "value": "84b23382-8059-4173-a155-287893828551"
+    },
+    {
+      "key": "botpressUserKey",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZlMzMzOTkyLTRiYzItNDUyZi05MDg5LTk5MDM4NjMyMWJmNSIsImlhdCI6MTc2MjIyOTA5MX0.mczVeAPje72yHpPUgp3WngolqcubiQkKOVcPN69DtL8"
+    }
+  ],
+  "item": [
+    {
+      "name": "Admin APIs",
+      "item": [
+        {
+          "name": "Admin - List Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{appBaseUrl}}/api/admin/users",
+              "host": ["{{appBaseUrl}}"],
+              "path": ["api", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "Admin - Update User Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"USER_ID\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{appBaseUrl}}/api/admin/users",
+              "host": ["{{appBaseUrl}}"],
+              "path": ["api", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "Admin - List Images",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{appBaseUrl}}/api/admin/images",
+              "host": ["{{appBaseUrl}}"],
+              "path": ["api", "admin", "images"]
+            }
+          }
+        },
+        {
+          "name": "Admin - Upload Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{appBaseUrl}}/api/admin/images/upload",
+              "host": ["{{appBaseUrl}}"],
+              "path": ["api", "admin", "images", "upload"]
+            }
+          }
+        },
+        {
+          "name": "Admin - Presigned URL (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{appBaseUrl}}/api/admin/images/presigned-url?key=YOUR_S3_KEY",
+              "host": ["{{appBaseUrl}}"],
+              "path": ["api", "admin", "images", "presigned-url"],
+              "query": [
+                { "key": "key", "value": "YOUR_S3_KEY" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin - Presigned URL (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keys\": [\"KEY_1\", \"KEY_2\"]\n}"
+            },
+            "url": {
+              "raw": "{{appBaseUrl}}/api/admin/images/presigned-url",
+              "host": ["{{appBaseUrl}}"],
+              "path": ["api", "admin", "images", "presigned-url"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Botpress APIs (Direct)",
+      "item": [
+        {
+          "name": "Botpress - List Files (KB, direct)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{botpressToken}}" },
+              { "key": "x-bot-id", "value": "{{botpressBotId}}" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "url": {
+              "raw": "{{botpressApiUrl}}/v1/files?tags[source]=knowledge-base",
+              "host": ["{{botpressApiUrl}}"],
+              "path": ["v1", "files"],
+              "query": [
+                { "key": "tags[source]", "value": "knowledge-base" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Botpress - List Files (KB, nextToken, direct)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{botpressToken}}" },
+              { "key": "x-bot-id", "value": "{{botpressBotId}}" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "url": {
+              "raw": "{{botpressApiUrl}}/v1/files?tags[source]=knowledge-base&nextToken=TOKEN",
+              "host": ["{{botpressApiUrl}}"],
+              "path": ["v1", "files"],
+              "query": [
+                { "key": "tags[source]", "value": "knowledge-base" },
+                { "key": "nextToken", "value": "TOKEN" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Botpress - Update File (Tags/Metadata, direct)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{botpressToken}}" },
+              { "key": "x-bot-id", "value": "{{botpressBotId}}" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"FILE_ID\",\n  \"data\": {\n    \"tags\": {\n      \"roles\": \"[\\\"ict\\\",\\\"com\\\"]\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{botpressApiUrl}}/v1/files/FILE_ID",
+              "host": ["{{botpressApiUrl}}"],
+              "path": ["v1", "files", "FILE_ID"]
+            }
+          }
+        },
+        {
+          "name": "Botpress - Upsert File (Get Upload URL, direct)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{botpressToken}}" },
+              { "key": "x-bot-id", "value": "{{botpressBotId}}" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"upsert\",\n  \"payload\": {\n    \"key\": \"my-document.md\",\n    \"size\": 12345,\n    \"index\": true,\n    \"tags\": {\n      \"source\": \"knowledge-base\",\n      \"kbId\": \"kb_01234\"\n    },\n    \"contentType\": \"text/markdown\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{botpressApiUrl}}/v1/files",
+              "host": ["{{botpressApiUrl}}"],
+              "path": ["v1", "files"]
+            }
+          }
+        },
+        {
+          "name": "Botpress - Messages (Poll, direct)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{botpressToken}}" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "url": {
+              "raw": "{{botpressApiUrl}}/v1/conversations/CONVO_ID/messages",
+              "host": ["{{botpressApiUrl}}"],
+              "path": ["v1", "conversations", "CONVO_ID", "messages"],
+              "query": [
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Botpress - Conversations (Get or Create, direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"CONVO_ID\"\n}"
+            },
+            "url": {
+              "raw": "{{botpressChatBaseUrl}}/conversations/get-or-create",
+              "host": ["{{botpressChatBaseUrl}}"],
+              "path": ["conversations", "get-or-create"]
+            }
+          }
+        },
+        {
+          "name": "Botpress - Send Message (direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-key", "value": "{{botpressUserKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": {\n    \"text\": \"hello\",\n    \"type\": \"text\"\n  },\n  \"conversationId\": \"CONVO_ID\"\n}"
+            },
+            "url": {
+              "raw": "{{botpressChatBaseUrl}}/messages",
+              "host": ["{{botpressChatBaseUrl}}"],
+              "path": ["messages"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

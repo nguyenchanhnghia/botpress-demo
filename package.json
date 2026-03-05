@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 3001",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -15,6 +15,7 @@
     "@aws-sdk/lib-dynamodb": "^3.466.0",
     "@aws-sdk/s3-request-presigner": "^3.953.0",
     "@botpress/chat": "^0.5.1",
+    "@botpress/client": "^1.36.0",
     "@botpress/webchat": "^3.0.0",
     "@types/js-cookie": "^3.0.6",
     "jose": "^5.10.0",

@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useUser } from "@/components/auth/UserContext";
 import UserMenu from "@/components/common/UserMenu";
+import ConfirmModal from "@/components/common/ConfirmModal";
 import { Button, ButtonOutline } from "@/components/common/Button";
 import KnowledgeBaseTable from "./KnowledgeBaseTable";
 import EditFileModal from "./EditFileModal";
+import UploadFileModal from "./UploadFileModal";
 import { useKnowledgeBaseFiles } from "./useKnowledgeBaseFiles";
+import { apiRequest } from "@/lib/api";
 import type { FileItem } from "./types";
 
 export default function AdminCMSPage() {
@@ -16,6 +19,9 @@ export default function AdminCMSPage() {
   const { user, loading: userLoading } = useUser();
   const [error, setError] = useState<string | null>(null);
   const [editFile, setEditFile] = useState<FileItem | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [deleteFile, setDeleteFile] = useState<FileItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const {
     filteredFiles,
     loading,
@@ -59,6 +65,27 @@ export default function AdminCMSPage() {
 
   const handleCloseModal = () => {
     setEditFile(null);
+  };
+
+  const handleDeleteClick = (file: FileItem) => {
+    setDeleteFile(file);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteFile) return;
+    setDeleting(true);
+    try {
+      await apiRequest(`/api/botpress/files/${deleteFile.id}`, {
+        method: "DELETE",
+        withAuth: true,
+      });
+      setDeleteFile(null);
+      fetchFiles();
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete file");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -145,6 +172,17 @@ export default function AdminCMSPage() {
       {/* Main content */}
       <div className="p-4 sm:p-8">
         <div className="max-w-6xl mx-auto bg-white/80 rounded-2xl shadow-xl p-4 sm:p-8">
+          <div className="flex justify-end items-center mb-6">
+            <div>
+              <Button
+                onClick={() => setUploadOpen(true)}
+                disabled={loading || searching}
+                className="px-4"
+              >
+                Upload
+              </Button>
+            </div>
+          </div>
           <div className="flex justify-between items-center mb-6">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="relative min-w-100">
@@ -189,7 +227,6 @@ export default function AdminCMSPage() {
               </ButtonOutline>
             </div>
           </div>
-
           {loading || searching ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -204,6 +241,7 @@ export default function AdminCMSPage() {
               files={displayFiles}
               getFileName={getFileName}
               onEdit={handleEditClick}
+              onDelete={handleDeleteClick}
             />
           )}
         </div>
@@ -219,6 +257,32 @@ export default function AdminCMSPage() {
           }}
         />
       )}
+      {uploadOpen && (
+        <UploadFileModal
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() => {
+            setUploadOpen(false);
+            fetchFiles();
+          }}
+        />
+      )}
+      <ConfirmModal
+        open={!!deleteFile}
+        onClose={() => setDeleteFile(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete file"
+        message={
+          deleteFile ? (
+            <>
+              Delete <span className="font-semibold">{getFileName(deleteFile)}</span>? This cannot be undone.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleting}
+        variant="danger"
+      />
     </div>
   );
 } 

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
             },
         });
         const data = await res.json();
-        console.log(data);
+        console.log('===RESPONSE===', res.status, data);
         if (!res.ok) {
             return NextResponse.json({ error: data.error || 'Failed to fetch files' }, { status: res.status });
         }
@@ -46,21 +46,28 @@ export async function PUT(req: NextRequest) {
     }
     try {
         const body = await req.json();
-        const res = await fetch(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files/${body.id}`, {
-            method: 'PUT',
-            headers: {
-                'x-user-key': userKey,
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.BOTPRESS_TOKEN}`,
-                'x-bot-id': `${process.env.BOT_ID}`,
-            },
-            body: JSON.stringify(body.data),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            return NextResponse.json({ error: data.error || 'Failed to update file' }, { status: res.status });
+        // Upsert mode: create/replace file and return uploadUrl
+        if (body?.mode === 'upsert' && body?.payload) {
+            const res = await fetch(`${process.env.BOT_PRESS_CLOUD_API_URL}/v1/files`, {
+                method: 'PUT',
+                headers: {
+                    'x-user-key': userKey,
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.BOTPRESS_TOKEN}`,
+                    'x-bot-id': `${process.env.BOT_ID}`,
+                },
+                body: JSON.stringify(body.payload),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                return NextResponse.json({ error: data.error || 'Failed to upsert file' }, { status: res.status });
+            }
+            return NextResponse.json(data);
+        } else {
+            return NextResponse.json({ error: 'Invalid mode' }, { status: 400 });
         }
-        return NextResponse.json(data);
+
+
     } catch {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
